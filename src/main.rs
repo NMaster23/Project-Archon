@@ -7,6 +7,20 @@ use std::time::Duration;
 use std::thread;
 use std::sync::mpsc::channel;
 use transcribe_rs::TranscribeOptions;
+use oauth2::{
+    AuthorizationCode,
+    AuthUrl,
+    ClientId,
+    ClientSecret,
+    CsrfToken,
+    PkceCodeChallenge,
+    RedirectUrl,
+    Scope,
+    TokenResponse,
+    TokenUrl
+};
+use oauth2::basic::BasicClient;
+use oauth2::reqwest;
 
 
 fn stt() {
@@ -54,6 +68,22 @@ fn stt() {
     }
 }
 
+fn oauth() {
+    let client = BasicClient::new(ClientId::new("client_id".to_string()))
+        .set_client_secret(ClientSecret::new("client_secret".to_string()))
+        .set_auth_uri(AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap())
+        .set_token_uri(TokenUrl::new("https://oauth2.googleapis.com/token".to_string()).unwrap())
+        .set_redirect_uri(RedirectUrl::new("http://localhost:8080/redirect".to_string()).unwrap());
+    let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+    let (auth_url, csrf_token) = client
+        .authorize_url(CsrfToken::new_random)
+        .add_scope(Scope::new("https://www.googleapis.com/auth/userinfo.profile".to_string()))
+        .add_scope(Scope::new("https://www.googleapis.com/auth/userinfo.email".to_string()))
+        .set_pkce_challenge(pkce_challenge)
+        .url();
+    println!("Browse to: {}", auth_url);
+}
+
 fn main() {
-    stt();
+    oauth();
 }

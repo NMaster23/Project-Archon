@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 cpal = "0.17.3"
+oauth2 = "5.0.0"
 transcribe-rs = { version = "0.3.11", features = ["onnx"] }
