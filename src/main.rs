@@ -17,16 +17,12 @@ fn stt() {
     ).unwrap();
     let host = cpal::default_host();
     let device = host.default_input_device().expect("no output device available");
-    let mut supported_configs_range = device.supported_output_configs()
-        .expect("error while querying configs");
-    let supported_config = supported_configs_range.next()
-        .expect("no supported config?!")
-        .with_max_sample_rate();
-    let config = supported_config.into();
+    println!("{}", device.description().unwrap());
+    let config = device.default_input_config().unwrap().into();
     let (tx, rx) = std::sync::mpsc::channel::<Vec<f32>>();
-    let stream = device.build_output_stream(
+    let stream = device.build_input_stream(
         &config,
-        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+        move |data: &[f32], _: &cpal::InputCallbackInfo| {
             tx.send(data.to_vec()).ok();
         },
         move |err| {
@@ -35,18 +31,25 @@ fn stt() {
     ).expect("failed to build stream");
     stream.play().unwrap();
     let mut audio = Vec::new();
-    loop {
-        while let Ok(samples) = rx.try_recv() {
-            let skip = (config.sample_rate / 16000) as usize;
-            let filtered: Vec<f32> = samples.into_iter().step_by(skip).collect();
-            audio.extend(filtered);
+    while let Ok(samples) = rx.recv() {
+        let sample_rate = config.sample_rate as u32 as usize;
+        let channels = config.channels as usize;
+        for frame in samples.chunks_exact(channels) {
+            let sample = frame.iter().sum::<f32>() / channels as f32;
+            audio.push(sample);
         }
-        if audio.len() > 16000 {
-            let result = model.transcribe(&audio, &TranscribeOptions::default()).unwrap();
-            if !result.text.is_empty() {
-                println!("{:?}", result);
+        
+        if audio.len() >= sample_rate {
+            let skip = (sample_rate / 16000).max(1) as usize;
+            let filtered: Vec<f32> = audio.iter().step_by(skip).copied().collect();
+            let rms = (filtered.iter().map(|x| x * x).sum::<f32>() / filtered.len() as f32).sqrt();
+            if rms > 0.002 {
+                let result = model.transcribe(&filtered, &TranscribeOptions::default()).unwrap();
+                if !result.text.is_empty() && result.text != "Thank you." {
+                    println!("{:?}", result);
+                }
             }
-            audio.clear();
+            audio.drain(..sample_rate);
         }
     }
 }
