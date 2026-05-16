@@ -2008,6 +2008,8 @@ dependencies = [
  "cpal",
  "magic-crypt",
  "oauth2",
+ "serde",
+ "serde_json",
  "tokio",
  "transcribe-rs",
  "url",

@@ -8,6 +8,8 @@ app_dirs2 = "2.5.5"
 cpal = "0.17.3"
 magic-crypt = "4.0.1"
 oauth2 = "5.0.0"
+serde = "1.0.228"
+serde_json = "1.0.149"
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 transcribe-rs = { version = "0.3.11", features = ["onnx"] }
 url = "2.5.8"
