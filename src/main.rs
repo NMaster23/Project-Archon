@@ -1,16 +1,18 @@
+use serde_json::json;
 use transcribe_rs::onnx::moonshine::StreamingModel;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::SpeechModel;
 use std::path::PathBuf;
+use std::sync::mpsc;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use transcribe_rs::TranscribeOptions;
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, RedirectUrl, Scope, TokenResponse, TokenUrl
 };
 use oauth2::basic::BasicClient;
-use oauth2::reqwest::*;
-use crate::redirect::Policy;
-use std::io;
+use oauth2::reqwest::{Client, ClientBuilder, Url};
+use reqwest::redirect::Policy;
+use std::{io, thread};
 use magic_crypt::{new_magic_crypt, MagicCryptTrait};
 use app_dirs2::*;
 use std::fs::File;
@@ -19,7 +21,7 @@ use std::io::{Write, Read};
 const APP_INFO: AppInfo = AppInfo{name: "Talos", author: "NMCreator"};
 
 #[derive(serde::Deserialize, serde::Serialize)]
-struct UserData {
+pub struct UserData {
     #[serde(rename = "sub")]
     id: String,
     email: String,
@@ -46,7 +48,7 @@ fn encrypt(secret: &str, data_path: &PathBuf) {
     file.write_all(encrypted.as_bytes()).unwrap();
 }
 
-async fn get_data(data_path: &PathBuf) -> String {
+async fn get_data(data_path: &PathBuf) -> UserData {
     let path = data_path.join("user.info");
     let mut file = File::open(path).unwrap();
     let mut contents = String::new();
@@ -54,17 +56,19 @@ async fn get_data(data_path: &PathBuf) -> String {
     let mc = new_magic_crypt!("magickey", 256);
     let decrypted = mc.decrypt_base64_to_string(&contents).unwrap();
     println!("{}", decrypted);
-    decrypted
+    let user_data = serde_json::from_str::<UserData>(&decrypted).unwrap();
+    user_data
 }
 
 async fn user_info(token: &str) -> UserData {
-    let response = Client::new()
+    let userdata = Client::new()
         .get("https://www.googleapis.com/oauth2/v3/userinfo")
         .header("Authorization", format!("Bearer {}", token))
         .send()
+        .await.unwrap()
+        .json::<UserData>()
         .await.unwrap();
-    let user: UserData = serde_json::from_str(&response.text().await.unwrap()).unwrap();
-    user
+    userdata
 }
 
 async fn oauth(data_path: &PathBuf) {
@@ -116,7 +120,24 @@ async fn oauth(data_path: &PathBuf) {
     encrypt(&user_data, data_path);
 }
 
-fn stt() {
+async fn gemini(token: &str, prompt: &str) {
+    let response = Client::new()
+        .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&json!({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "parameters": {
+                "maxOutputTokens": 256,
+                "temperature": 0.7,
+                "topP": 0.95
+            }
+        }))
+        .send()
+        .await.unwrap();
+    println!("{:?}", response);
+}
+
+fn stt(tx_out: mpsc::Sender<String>) {
     let mut model = StreamingModel::load(
         &PathBuf::from("models\\moonshine-streaming-small-onnx"),
         4,  // threads
@@ -154,6 +175,9 @@ fn stt() {
             if rms > 0.002 {
                 let result = model.transcribe(&filtered, &TranscribeOptions::default()).unwrap();
                 if !result.text.is_empty() && result.text != "Thank you." {
+                    if tx_out.send(result.text.clone()).is_err() {
+                        break;
+                    }
                     println!("{:?}", result);
                 }
             }
@@ -165,11 +189,18 @@ fn stt() {
 #[tokio::main]
 async fn main() {
     let data_path = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
-    if std::fs::exists(&data_path).unwrap() {
-        get_data(&data_path).await;
+    let user_data: UserData = if std::fs::exists(&data_path).unwrap() {
+        get_data(&data_path).await
     } else {
-        std::fs::create_dir_all(&data_path);
+        let _ = std::fs::create_dir_all(&data_path);
         oauth(&data_path).await;
+        get_data(&data_path).await
+    };
+    let (tx_out, rx_out) = mpsc::channel();
+    thread::spawn(move || {
+        stt(tx_out);
+    });
+    while let Ok(speech) = rx_out.recv() {
+        gemini(user_data.token.as_str(), &speech).await;
     }
-    stt();
 }
