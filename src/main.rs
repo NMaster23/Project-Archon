@@ -39,19 +39,21 @@ pub struct UserData {
     access_token: String,
     #[serde(default)]
     refresh_token: String,
+    client_id: String,
+    client_secret: String,
 }
 
 fn encrypt(secret: &str, data_path: &PathBuf) {
     let mc = new_magic_crypt!("magickey", 256);
     let encrypted = mc.encrypt_str_to_base64(secret);
-    let path = data_path.join("user.info");
+    let path = data_path.join("user_gcp.info");
     println!("{:?}", path);
     let mut file = File::create(path).unwrap();
     file.write_all(encrypted.as_bytes()).unwrap();
 }
 
 async fn get_data(data_path: &PathBuf) -> UserData {
-    let path = data_path.join("user.info");
+    let path = data_path.join("user_gcp.info");
     let mut file = File::open(path).unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
@@ -74,8 +76,8 @@ async fn user_info(token: &str) -> UserData {
 }
 
 async fn oauth(data_path: &PathBuf) {
-    let client = BasicClient::new(ClientId::new("In File".to_string()))
-        .set_client_secret(ClientSecret::new("In File".to_string()))
+    let client = BasicClient::new(ClientId::new("387354057252-tenk11q3gakltdvej1uo89lds9ik97pd.apps.googleusercontent.com".to_string()))
+        .set_client_secret(ClientSecret::new("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".to_string()))
         .set_auth_uri(AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap())
         .set_token_uri(TokenUrl::new("https://oauth2.googleapis.com/token".to_string()).unwrap())
         .set_redirect_uri(RedirectUrl::new("http://localhost:8080/redirect".to_string()).unwrap());
@@ -85,6 +87,7 @@ async fn oauth(data_path: &PathBuf) {
         .add_scope(Scope::new("https://www.googleapis.com/auth/userinfo.profile".to_string()))
         .add_scope(Scope::new("https://www.googleapis.com/auth/userinfo.email".to_string()))
         .add_scope(Scope::new("https://www.googleapis.com/auth/cloud-platform".to_string()))
+        .add_scope(Scope::new("https://www.googleapis.com/auth/generative-language.retriever".to_string()))
         .set_pkce_challenge(pkce_challenge)
         .url();
     println!("Browse to: {}", auth_url);
@@ -107,6 +110,12 @@ async fn oauth(data_path: &PathBuf) {
     let token = token_result.access_token().secret();
     let profile = user_info(&token).await;
     let saved_token = token_result.refresh_token().map(|t| t.secret().to_string()).unwrap();
+    let mut client_id = String::new();
+    let mut client_secret = String::new();
+    println!("ID");
+    io::stdin().read_line(&mut client_id).expect("Failed to read line");
+    println!("Secret");
+    io::stdin().read_line(&mut client_secret).expect("Failed to read line");
     let user = UserData {
         id: profile.id,
         email: profile.email,
@@ -118,17 +127,20 @@ async fn oauth(data_path: &PathBuf) {
         locale: profile.locale,
         access_token: token.to_string(),
         refresh_token: saved_token,
+        client_id: client_id.trim().to_string(),
+        client_secret: client_secret.trim().to_string(),
     };
     let user_data = serde_json::to_string(&user).unwrap();
     encrypt(&user_data, data_path);
 }
 
+
 async fn refresh_token(token: &str) -> String {
     let response = Client::new()
         .post("https://oauth2.googleapis.com/token")
         .form(&[
-            ("client_id", "In File"),
-            ("client_secret", "In File"),
+            ("client_id", "387354057252-tenk11q3gakltdvej1uo89lds9ik97pd.apps.googleusercontent.com"),
+            ("client_secret", "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"),
             ("refresh_token", token),
             ("grant_type", "refresh_token"),
         ])
@@ -142,28 +154,22 @@ async fn refresh_token(token: &str) -> String {
 
 async fn gemini(token: &str, prompt: &str) -> bool {
     let response = Client::new()
-        .post("https://cloudaicompanion.googleapis.com/v1:generateContent".to_string())
+        .post("https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent".to_string())
         .header("Authorization", format!("Bearer {}", token))
+        .header("x-goog-user-project", "project-archon-496601")
+        .header("User-Agent", "Talos")
         .json(&json!({
-            "model": "models/gemini-2.0-flash-001",
-            "request": {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [{"text": prompt}]
-                    }
-                ],
-                "generationConfig": {
-                    "maxOutputTokens": 8192,
-                    "temperature": 1.0,
-                    "topP": 0.95
-                }
-            }
+            "contents": [{
+                "role": "user",
+                "parts": [{ "text": prompt }]
+            }]
         }))
         .send()
         .await.unwrap();
-    if response.status() == 401 { 
-        println!("Error: 401");
+    if !response.status().is_success() { 
+        let status = response.status();
+        let error_body = response.text().await.unwrap_or_default();
+        println!("API Error {}: {}", status, error_body);
         return false;
     }
     let body = response.text().await.unwrap();
@@ -223,7 +229,7 @@ fn stt(tx_out: mpsc::Sender<String>) {
 #[tokio::main]
 async fn main() {
     let data_path = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
-    let user_file = data_path.join("user.info");
+    let user_file = data_path.join("user_gcp.info");
     let mut user_data: UserData = if std::fs::exists(user_file).unwrap() {
         get_data(&data_path).await
     } else {
