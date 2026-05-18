@@ -36,7 +36,9 @@ pub struct UserData {
     #[serde(default)]
     locale: String,
     #[serde(default)]
-    token: String,
+    access_token: String,
+    #[serde(default)]
+    refresh_token: String,
 }
 
 fn encrypt(secret: &str, data_path: &PathBuf) {
@@ -72,8 +74,8 @@ async fn user_info(token: &str) -> UserData {
 }
 
 async fn oauth(data_path: &PathBuf) {
-    let client = BasicClient::new(ClientId::new("681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com".to_string()))
-        .set_client_secret(ClientSecret::new("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".to_string()))
+    let client = BasicClient::new(ClientId::new("387354057252-tenk11q3gakltdvej1uo89lds9ik97pd.apps.googleusercontent.com".to_string()))
+        .set_client_secret(ClientSecret::new("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".to_string()))
         .set_auth_uri(AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap())
         .set_token_uri(TokenUrl::new("https://oauth2.googleapis.com/token".to_string()).unwrap())
         .set_redirect_uri(RedirectUrl::new("http://localhost:8080/redirect".to_string()).unwrap());
@@ -104,7 +106,7 @@ async fn oauth(data_path: &PathBuf) {
         .await.unwrap();
     let token = token_result.access_token().secret();
     let profile = user_info(&token).await;
-    let saved_token = token_result.refresh_token().map(|t| t.secret().to_string()).unwrap_or_else(|| token.to_string());
+    let saved_token = token_result.refresh_token().map(|t| t.secret().to_string()).unwrap();
     let user = UserData {
         id: profile.id,
         email: profile.email,
@@ -114,27 +116,59 @@ async fn oauth(data_path: &PathBuf) {
         family_name: profile.family_name,
         picture: profile.picture,
         locale: profile.locale,
-        token: saved_token,
+        access_token: token.to_string(),
+        refresh_token: saved_token,
     };
     let user_data = serde_json::to_string(&user).unwrap();
     encrypt(&user_data, data_path);
 }
 
-async fn gemini(token: &str, prompt: &str) {
+async fn refresh_token(token: &str) -> String {
     let response = Client::new()
-        .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
+        .post("https://oauth2.googleapis.com/token")
+        .form(&[
+            ("client_id", "387354057252-tenk11q3gakltdvej1uo89lds9ik97pd.apps.googleusercontent.com"),
+            ("client_secret", "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"),
+            ("refresh_token", token),
+            ("grant_type", "refresh_token"),
+        ])
+        .send()
+        .await.unwrap()
+        .json::<serde_json::Value>()
+        .await.unwrap();
+    let token = response["access_token"].as_str().unwrap().to_string();
+    token
+}
+
+async fn gemini(token: &str, prompt: &str) -> bool {
+    let response = Client::new()
+        .post("https://cloudaicompanion.googleapis.com/v1:generateContent".to_string())
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
-            "contents": [{"parts": [{"text": prompt}]}],
-            "parameters": {
-                "maxOutputTokens": 256,
-                "temperature": 0.7,
-                "topP": 0.95
+            "model": "models/gemini-2.0-flash-001",
+            "request": {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": prompt}]
+                    }
+                ],
+                "generationConfig": {
+                    "maxOutputTokens": 8192,
+                    "temperature": 1.0,
+                    "topP": 0.95
+                }
             }
         }))
         .send()
         .await.unwrap();
-    println!("{:?}", response);
+    if response.status() == 401 { 
+        println!("Error: 401");
+        return false;
+    }
+    let body = response.text().await.unwrap();
+    println!("{}", body);
+    true
 }
 
 fn stt(tx_out: mpsc::Sender<String>) {
@@ -189,7 +223,8 @@ fn stt(tx_out: mpsc::Sender<String>) {
 #[tokio::main]
 async fn main() {
     let data_path = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
-    let user_data: UserData = if std::fs::exists(&data_path).unwrap() {
+    let user_file = data_path.join("user.info");
+    let mut user_data: UserData = if std::fs::exists(user_file).unwrap() {
         get_data(&data_path).await
     } else {
         let _ = std::fs::create_dir_all(&data_path);
@@ -201,6 +236,9 @@ async fn main() {
         stt(tx_out);
     });
     while let Ok(speech) = rx_out.recv() {
-        gemini(user_data.token.as_str(), &speech).await;
+        if !gemini(user_data.access_token.as_str(), &speech).await {
+            user_data.access_token = refresh_token(user_data.refresh_token.as_str()).await;
+            gemini(user_data.access_token.as_str(), &speech).await;
+        }
     }
 }
