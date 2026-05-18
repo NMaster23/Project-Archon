@@ -127,8 +127,8 @@ async fn refresh_token(token: &str) -> String {
     let response = Client::new()
         .post("https://oauth2.googleapis.com/token")
         .form(&[
-            ("client_id", "387354057252-tenk11q3gakltdvej1uo89lds9ik97pd.apps.googleusercontent.com"),
-            ("client_secret", "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"),
+            ("client_id", "In File"),
+            ("client_secret", "In File"),
             ("refresh_token", token),
             ("grant_type", "refresh_token"),
         ])
