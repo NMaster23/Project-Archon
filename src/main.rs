@@ -43,16 +43,44 @@ pub struct UserData {
     client_secret: String,
 }
 
-fn encrypt(secret: &str, data_path: &PathBuf) {
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct APIData {
+    api_key: String,
+}
+
+fn encrypt(encrypt: &str, data_path: &PathBuf, file_name: &str) {
     let mc = new_magic_crypt!("magickey", 256);
-    let encrypted = mc.encrypt_str_to_base64(secret);
-    let path = data_path.join("user_gcp.info");
+    let encrypted = mc.encrypt_str_to_base64(encrypt);
+    let path = data_path.join(file_name);
     println!("{:?}", path);
     let mut file = File::create(path).unwrap();
     file.write_all(encrypted.as_bytes()).unwrap();
 }
 
-async fn get_data(data_path: &PathBuf) -> UserData {
+fn auth(data_path: &PathBuf) {
+    let mut api_key = String::new();
+    println!("API Key");
+    io::stdin().read_line(&mut api_key).expect("Failed to read line");
+    let api_data = APIData {
+        api_key: api_key.trim().to_string(),
+    };
+    let api_data = serde_json::to_string(&api_data).unwrap();
+    encrypt( api_data.as_str(), data_path, "user_api.info");
+}
+
+async fn get_auth(data_path: &PathBuf) -> APIData {
+    let path = data_path.join("user_api.info");
+    let mut file = File::open(path).unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let mc = new_magic_crypt!("magickey", 256);
+    let decrypted = mc.decrypt_base64_to_string(&contents).unwrap();
+    println!("{}", decrypted);
+    let api_data = serde_json::from_str::<APIData>(&decrypted).unwrap();
+    api_data
+}
+
+async fn get_data_gcp(data_path: &PathBuf) -> UserData {
     let path = data_path.join("user_gcp.info");
     let mut file = File::open(path).unwrap();
     let mut contents = String::new();
@@ -64,7 +92,7 @@ async fn get_data(data_path: &PathBuf) -> UserData {
     user_data
 }
 
-async fn user_info(token: &str) -> UserData {
+async fn user_info_gcp(token: &str) -> UserData {
     let userdata = Client::new()
         .get("https://www.googleapis.com/oauth2/v3/userinfo")
         .header("Authorization", format!("Bearer {}", token))
@@ -75,7 +103,7 @@ async fn user_info(token: &str) -> UserData {
     userdata
 }
 
-async fn oauth(data_path: &PathBuf) {
+async fn oauth_gcp(data_path: &PathBuf) {
     let client = BasicClient::new(ClientId::new("387354057252-tenk11q3gakltdvej1uo89lds9ik97pd.apps.googleusercontent.com".to_string()))
         .set_client_secret(ClientSecret::new("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".to_string()))
         .set_auth_uri(AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap())
@@ -108,7 +136,7 @@ async fn oauth(data_path: &PathBuf) {
         .request_async(&http_client)
         .await.unwrap();
     let token = token_result.access_token().secret();
-    let profile = user_info(&token).await;
+    let profile = user_info_gcp(&token).await;
     let saved_token = token_result.refresh_token().map(|t| t.secret().to_string()).unwrap();
     let mut client_id = String::new();
     let mut client_secret = String::new();
@@ -131,11 +159,11 @@ async fn oauth(data_path: &PathBuf) {
         client_secret: client_secret.trim().to_string(),
     };
     let user_data = serde_json::to_string(&user).unwrap();
-    encrypt(&user_data, data_path);
+    encrypt(&user_data, data_path, "user_gcp.info");
 }
 
 
-async fn refresh_token(token: &str) -> String {
+async fn refresh_token_gcp(token: &str) -> String {
     let response = Client::new()
         .post("https://oauth2.googleapis.com/token")
         .form(&[
@@ -152,7 +180,7 @@ async fn refresh_token(token: &str) -> String {
     token
 }
 
-async fn gemini(token: &str, prompt: &str) -> bool {
+async fn gemini_gcp(token: &str, prompt: &str) -> bool {
     let response = Client::new()
         .post("https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent".to_string())
         .header("Authorization", format!("Bearer {}", token))
@@ -231,20 +259,27 @@ async fn main() {
     let data_path = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
     let user_file = data_path.join("user_gcp.info");
     let mut user_data: UserData = if std::fs::exists(user_file).unwrap() {
-        get_data(&data_path).await
+        get_data_gcp(&data_path).await
     } else {
         let _ = std::fs::create_dir_all(&data_path);
-        oauth(&data_path).await;
-        get_data(&data_path).await
+        oauth_gcp(&data_path).await;
+        get_data_gcp(&data_path).await
+    };
+    let mut api_data: APIData = if std::fs::exists(data_path.join("user_api.info")).unwrap() {
+        get_auth(&data_path).await
+    } else {
+        let _ = std::fs::create_dir_all(&data_path);
+        auth(&data_path);
+        get_auth(&data_path).await
     };
     let (tx_out, rx_out) = mpsc::channel();
     thread::spawn(move || {
         stt(tx_out);
     });
     while let Ok(speech) = rx_out.recv() {
-        if !gemini(user_data.access_token.as_str(), &speech).await {
-            user_data.access_token = refresh_token(user_data.refresh_token.as_str()).await;
-            gemini(user_data.access_token.as_str(), &speech).await;
+        if !gemini_gcp(user_data.access_token.as_str(), &speech).await {
+            user_data.access_token = refresh_token_gcp(user_data.refresh_token.as_str()).await;
+            gemini_gcp(user_data.access_token.as_str(), &speech).await;
         }
     }
 }
