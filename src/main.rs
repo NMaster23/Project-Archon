@@ -74,8 +74,8 @@ async fn user_info(token: &str) -> UserData {
 }
 
 async fn oauth(data_path: &PathBuf) {
-    let client = BasicClient::new(ClientId::new("387354057252-tenk11q3gakltdvej1uo89lds9ik97pd.apps.googleusercontent.com".to_string()))
-        .set_client_secret(ClientSecret::new("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".to_string()))
+    let client = BasicClient::new(ClientId::new("In File".to_string()))
+        .set_client_secret(ClientSecret::new("In File".to_string()))
         .set_auth_uri(AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap())
         .set_token_uri(TokenUrl::new("https://oauth2.googleapis.com/token".to_string()).unwrap())
         .set_redirect_uri(RedirectUrl::new("http://localhost:8080/redirect".to_string()).unwrap());
