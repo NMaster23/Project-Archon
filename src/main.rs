@@ -17,6 +17,11 @@ use magic_crypt::{new_magic_crypt, MagicCryptTrait};
 use app_dirs2::*;
 use std::fs::File;
 use std::io::{Write, Read};
+use gemini_live::session::{Session, SessionConfig, ReconnectPolicy};
+use gemini_live::transport::{Auth, TransportConfig};
+use gemini_live::types::*;
+use std::num::{NonZeroU16, NonZeroU32};
+use rodio::buffer::SamplesBuffer;
 
 const APP_INFO: AppInfo = AppInfo{name: "Talos", author: "NMCreator"};
 
@@ -78,6 +83,46 @@ async fn get_auth(data_path: &PathBuf) -> APIData {
     println!("{}", decrypted);
     let api_data = serde_json::from_str::<APIData>(&decrypted).unwrap();
     api_data
+}
+
+async fn gemini_api(api_key: &str, prompt: &str, rx_out: mpsc::Receiver<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut session = Session::connect(SessionConfig {
+        transport: TransportConfig {
+            auth: Auth::ApiKey(api_key.to_string()),
+            ..Default::default()
+        },
+        setup: SetupConfig {
+            model: "models/gemini-3.1-flash-live-preview".into(),
+            generation_config: Some(GenerationConfig {
+                response_modalities: Some(vec![Modality::Audio]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        reconnect: ReconnectPolicy::default(),
+    }).await?;
+    let handle = rodio::DeviceSinkBuilder::open_default_sink()
+        .expect("open default audio stream");
+    let player = rodio::Player::connect_new(&handle.mixer());
+    player.play();
+    session.send_text(prompt).await?;
+    while let Some(event) = session.next_event().await {
+        match event {
+            ServerEvent::ModelAudio(audio) => {
+                print!("{:?}", audio.len());
+                let samples: Vec<f32> = audio
+                    .chunks_exact(2)
+                    .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0)
+                    .collect();
+                let source = SamplesBuffer::new(NonZeroU16::new(1).unwrap(), NonZeroU32::new(24000).unwrap(), samples);
+                player.append(source);
+            }
+            ServerEvent::ModelText(text) => print!("{text}"),
+            ServerEvent::TurnComplete => println!("\n--- turn done ---"),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 async fn get_data_gcp(data_path: &PathBuf) -> UserData {
@@ -208,7 +253,7 @@ async fn gemini_gcp(token: &str, prompt: &str) -> bool {
 fn stt(tx_out: mpsc::Sender<String>) {
     let mut model = StreamingModel::load(
         &PathBuf::from("models\\moonshine-streaming-small-onnx"),
-        4,  // threads
+        4,
         &Quantization::default(),
     ).unwrap();
     let host = cpal::default_host();
@@ -258,28 +303,54 @@ fn stt(tx_out: mpsc::Sender<String>) {
 async fn main() {
     let data_path = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
     let user_file = data_path.join("user_gcp.info");
-    let mut user_data: UserData = if std::fs::exists(user_file).unwrap() {
-        get_data_gcp(&data_path).await
-    } else {
-        let _ = std::fs::create_dir_all(&data_path);
-        oauth_gcp(&data_path).await;
-        get_data_gcp(&data_path).await
-    };
-    let mut api_data: APIData = if std::fs::exists(data_path.join("user_api.info")).unwrap() {
-        get_auth(&data_path).await
-    } else {
-        let _ = std::fs::create_dir_all(&data_path);
-        auth(&data_path);
-        get_auth(&data_path).await
-    };
+    let mut gcp_or_api = true;
+    let mut user_data: Option<UserData> = None;
+    let mut mode = String::new();
+    io::stdin().read_line(&mut mode).unwrap();
+    if mode.trim().contains("gcp") {
+        gcp_or_api = false;
+    } else if mode.trim().contains("api") {
+        gcp_or_api = true;
+    }
+    if !gcp_or_api {
+        if std::fs::exists(user_file).unwrap() {
+            user_data = Some(get_data_gcp(&data_path).await);
+        } else {
+            let _ = std::fs::create_dir_all(&data_path);
+            oauth_gcp(&data_path).await;
+            user_data = Some(get_data_gcp(&data_path).await);
+        }
+    }
+    let mut api_data: Option<APIData> = None;
+    if gcp_or_api {   
+        api_data = Some(if std::fs::exists(data_path.join("user_api.info")).unwrap() {
+            let auth_data = get_auth(&data_path).await;
+            auth_data
+        } else {
+            let _ = std::fs::create_dir_all(&data_path);
+            auth(&data_path);
+            get_auth(&data_path).await
+        });
+    }
     let (tx_out, rx_out) = mpsc::channel();
     thread::spawn(move || {
         stt(tx_out);
     });
-    while let Ok(speech) = rx_out.recv() {
-        if !gemini_gcp(user_data.access_token.as_str(), &speech).await {
-            user_data.access_token = refresh_token_gcp(user_data.refresh_token.as_str()).await;
-            gemini_gcp(user_data.access_token.as_str(), &speech).await;
+    if !gcp_or_api {
+        let mut user_data = user_data.expect("User data should be initialized");
+        while let Ok(speech) = rx_out.recv() {
+            if !gemini_gcp(user_data.access_token.as_str(), &speech).await {
+                user_data.access_token = refresh_token_gcp(user_data.refresh_token.as_str()).await;
+                gemini_gcp(user_data.access_token.as_str(), &speech).await;
+            }
         }
+    }
+    if gcp_or_api {
+        let Ok(speech) = rx_out.recv() else {
+            return;
+        };
+        let api_data = api_data.expect("API data should be initialized");
+        let result = gemini_api(api_data.api_key.as_str(), &speech).await;
+        println!("{:?}", result);
     }
 }
