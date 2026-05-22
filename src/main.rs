@@ -3,7 +3,8 @@ use transcribe_rs::onnx::moonshine::StreamingModel;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::SpeechModel;
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::time::Duration;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use transcribe_rs::TranscribeOptions;
 use oauth2::{
@@ -22,6 +23,8 @@ use gemini_live::transport::{Auth, TransportConfig};
 use gemini_live::types::*;
 use std::num::{NonZeroU16, NonZeroU32};
 use rodio::buffer::SamplesBuffer;
+
+slint::include_modules!();
 
 const APP_INFO: AppInfo = AppInfo{name: "Talos", author: "NMCreator"};
 
@@ -85,7 +88,7 @@ async fn get_auth(data_path: &PathBuf) -> APIData {
     api_data
 }
 
-async fn gemini_api(api_key: &str, prompt: &str, rx_out: mpsc::Receiver<String>) -> Result<(), Box<dyn std::error::Error>> {
+async fn gemini_api(api_key: &str, rx_out: mpsc::Receiver<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut session = Session::connect(SessionConfig {
         transport: TransportConfig {
             auth: Auth::ApiKey(api_key.to_string()),
@@ -105,21 +108,57 @@ async fn gemini_api(api_key: &str, prompt: &str, rx_out: mpsc::Receiver<String>)
         .expect("open default audio stream");
     let player = rodio::Player::connect_new(&handle.mixer());
     player.play();
-    session.send_text(prompt).await?;
-    while let Some(event) = session.next_event().await {
-        match event {
-            ServerEvent::ModelAudio(audio) => {
-                print!("{:?}", audio.len());
-                let samples: Vec<f32> = audio
-                    .chunks_exact(2)
-                    .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0)
-                    .collect();
-                let source = SamplesBuffer::new(NonZeroU16::new(1).unwrap(), NonZeroU32::new(24000).unwrap(), samples);
-                player.append(source);
+    loop {
+        let mut speech = String::new();
+        match rx_out.recv() {
+            Ok(speech_input) => {
+                let processed = speech_input.trim().to_string();
+                if !processed.is_empty() {
+                    speech.push_str(&processed);
+                }
             }
-            ServerEvent::ModelText(text) => print!("{text}"),
-            ServerEvent::TurnComplete => println!("\n--- turn done ---"),
-            _ => {}
+            Err(_) => break,
+        }
+        loop {
+            match rx_out.recv_timeout(Duration::from_secs(1)) {
+                Ok(input_speech) => {
+                    let processed = input_speech.trim().to_string();
+                    if !processed.is_empty() {
+                        if !speech.is_empty() {
+                            speech.push_str(&" ".to_string());
+                        }
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => break,
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        if speech.is_empty() {
+            continue;
+        }
+        session.send_text(&speech).await?;
+        println!("\nYou (STT): {}", speech);
+        print!("Gemini: ");
+        std::io::stdout().flush()?;
+        while let Some(event) = session.next_event().await {
+            match event {
+                ServerEvent::ModelAudio(audio) => {
+                    print!("{:?}", audio.len());
+                    let samples: Vec<f32> = audio
+                        .chunks_exact(2)
+                        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0)
+                        .collect();
+                    let source = SamplesBuffer::new(NonZeroU16::new(1).unwrap(), NonZeroU32::new(24000).unwrap(), samples);
+                    player.append(source);
+                }
+                ServerEvent::ModelText(text) => print!("{text}"),
+                ServerEvent::TurnComplete => {
+                    println!("\n--- turn done ---");
+                    player.sleep_until_end();
+                    break;
+                }
+                _ => {}
+            }
         }
     }
     Ok(())
@@ -346,11 +385,9 @@ async fn main() {
         }
     }
     if gcp_or_api {
-        let Ok(speech) = rx_out.recv() else {
-            return;
-        };
         let api_data = api_data.expect("API data should be initialized");
-        let result = gemini_api(api_data.api_key.as_str(), &speech).await;
-        println!("{:?}", result);
+        if let Err(e) = gemini_api(api_data.api_key.as_str(), rx_out).await {
+            eprintln!("Gemini session error: {:?}", e);
+        }
     }
 }
