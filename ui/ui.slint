@@ -1,8 +1,17 @@
-import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
+import { Button, VerticalBox, LineEdit, ListView } from "std-widgets.slint";
+
+export struct LogEntry {
+    sender: string,
+    message: string,
+}
 
 export component AppWindow inherits Window {
     in-out property <bool> mode;
     in-out property <bool> show_mode: true;
+    in-out property <bool> api_completed;
+    
+    in-out property <[LogEntry]> user_logs;
+    in-out property <[LogEntry]> api_logs;
 
     callback send_signin();
     callback send_mode(bool);
@@ -54,6 +63,19 @@ export component AppWindow inherits Window {
                 placeholder-text: "API Key";
                 accepted(text) => {
                     send_api(text);
+                }
+            }
+        }
+    if (!show_mode && !mode && api_completed):
+        HorizontalBox {
+            ListView {
+                for log in root.user_logs: Text {
+                    text: log.sender + ": " + log.message;
+                }
+            }
+            ListView {
+                for log in root.api_logs: Text {
+                    text: log.sender + ": " + log.message;
                 }
             }
         }

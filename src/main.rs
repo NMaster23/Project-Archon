@@ -3,6 +3,8 @@ use slint::Weak;
 use transcribe_rs::onnx::moonshine::StreamingModel;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::SpeechModel;
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
@@ -69,14 +71,15 @@ fn encrypt(encrypt: &str, data_path: &PathBuf, file_name: &str) {
 }
 
 fn auth(data_path: &PathBuf, ui: Weak<AppWindow>) {
-    let mut api_key = String::new();
+    let mut api_key = Arc::new(Mutex::new(String::new()));
+    let mut api_input = Arc::clone(&api_key);
     ui.upgrade_in_event_loop(move |ui_mode| {
-        ui_mode.on_send_api(move || {
-            
+        ui_mode.on_send_api(move |api_key_ui| {
+            *api_input.lock().unwrap() = api_key_ui.to_string();
         });
     });
     let api_data = APIData {
-        api_key: api_key.trim().to_string(),
+        api_key: api_key.lock().unwrap().trim().to_string(),
     };
     let api_data = serde_json::to_string(&api_data).unwrap();
     encrypt( api_data.as_str(), data_path, "user_api.info");
@@ -94,7 +97,10 @@ async fn get_auth(data_path: &PathBuf) -> APIData {
     api_data
 }
 
-async fn gemini_api(api_key: &str, rx_out: mpsc::Receiver<String>) -> Result<(), Box<dyn std::error::Error>> {
+async fn gemini_api(api_key: &str, rx_out: mpsc::Receiver<String>, ui: Weak<AppWindow>) -> Result<(), Box<dyn std::error::Error>> {
+    ui.upgrade_in_event_loop(move |ui_mode| {
+        ui_mode.set_api_completed(true);
+    });
     let mut session = Session::connect(SessionConfig {
         transport: TransportConfig {
             auth: Auth::ApiKey(api_key.to_string()),
@@ -103,7 +109,7 @@ async fn gemini_api(api_key: &str, rx_out: mpsc::Receiver<String>) -> Result<(),
         setup: SetupConfig {
             model: "models/gemini-3.1-flash-live-preview".into(),
             generation_config: Some(GenerationConfig {
-                response_modalities: Some(vec![Modality::Audio]),
+                response_modalities: Some(vec![Modality::Audio, Modality::Text]),
                 ..Default::default()
             }),
             ..Default::default()
@@ -143,9 +149,31 @@ async fn gemini_api(api_key: &str, rx_out: mpsc::Receiver<String>) -> Result<(),
             continue;
         }
         session.send_text(&speech).await?;
-        println!("\nYou (STT): {}", speech);
-        print!("Gemini: ");
-        std::io::stdout().flush()?;
+        let speech_str = speech.clone();
+        let ui_clone = ui.clone();
+        slint::invoke_from_event_loop(move || {
+            if let Some(ui_instance) = ui_clone.upgrade() {
+                let mut current: Vec<LogEntry> = ui_instance.get_user_logs().iter().collect();
+                current.push(LogEntry {
+                    sender: SharedString::from("User"),
+                    message: SharedString::from(speech_str),
+                });
+                ui_instance.set_user_logs(ModelRc::from(Rc::new(VecModel::from(current))));
+            }
+        }).unwrap();
+        let gem_str = gemini_response.clone();
+        let ui_clone = ui.clone();
+        slint::invoke_from_event_loop(move || {
+            if let Some(ui_instance) = ui_clone.upgrade() {
+                let mut current: Vec<LogEntry> = ui_instance.get_gemini_logs().iter().collect();
+                current.push(LogEntry {
+                    sender: SharedString::from("Gemini"),
+                    message: SharedString::from(gem_str),
+                });
+                ui_instance.set_gemini_logs(ModelRc::from(Rc::new(VecModel::from(current))));
+            }
+        }).unwrap();
+        let mut gemini_response = String::new();
         while let Some(event) = session.next_event().await {
             match event {
                 ServerEvent::ModelAudio(audio) => {
@@ -157,10 +185,14 @@ async fn gemini_api(api_key: &str, rx_out: mpsc::Receiver<String>) -> Result<(),
                     let source = SamplesBuffer::new(NonZeroU16::new(1).unwrap(), NonZeroU32::new(24000).unwrap(), samples);
                     player.append(source);
                 }
-                ServerEvent::ModelText(text) => print!("{text}"),
+                ServerEvent::ModelText(text) => {
+                    print!("{text}");
+                    gemini_response.push_str(&text);
+                }
                 ServerEvent::TurnComplete => {
                     println!("\n--- turn done ---");
                     player.sleep_until_end();
+                    chat_logs.insert("Gemini".to_string(), gemini_response);
                     break;
                 }
                 _ => {}
@@ -413,7 +445,7 @@ async fn main() {
         }
         if gcp_or_api.load(Ordering::Relaxed) {
             let api_data = api_data.expect("API data should be initialized");
-            if let Err(e) = gemini_api(api_data.api_key.as_str(), rx_out).await {
+            if let Err(e) = gemini_api(api_data.api_key.as_str(), rx_out, ui_api.clone()).await {
                 eprintln!("Gemini session error: {:?}", e);
             }
         }
