@@ -1,4 +1,5 @@
 use serde_json::json;
+use slint::Weak;
 use transcribe_rs::onnx::moonshine::StreamingModel;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::SpeechModel;
@@ -23,6 +24,8 @@ use gemini_live::transport::{Auth, TransportConfig};
 use gemini_live::types::*;
 use std::num::{NonZeroU16, NonZeroU32};
 use rodio::buffer::SamplesBuffer;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 slint::include_modules!();
 
@@ -65,10 +68,13 @@ fn encrypt(encrypt: &str, data_path: &PathBuf, file_name: &str) {
     file.write_all(encrypted.as_bytes()).unwrap();
 }
 
-fn auth(data_path: &PathBuf) {
+fn auth(data_path: &PathBuf, ui: Weak<AppWindow>) {
     let mut api_key = String::new();
-    println!("API Key");
-    io::stdin().read_line(&mut api_key).expect("Failed to read line");
+    ui.upgrade_in_event_loop(move |ui_mode| {
+        ui_mode.on_send_api(move || {
+            
+        });
+    });
     let api_data = APIData {
         api_key: api_key.trim().to_string(),
     };
@@ -187,7 +193,7 @@ async fn user_info_gcp(token: &str) -> UserData {
     userdata
 }
 
-async fn oauth_gcp(data_path: &PathBuf) {
+async fn oauth_gcp(data_path: &PathBuf, ui: Weak<AppWindow>) {
     let client = BasicClient::new(ClientId::new("387354057252-tenk11q3gakltdvej1uo89lds9ik97pd.apps.googleusercontent.com".to_string()))
         .set_client_secret(ClientSecret::new("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".to_string()))
         .set_auth_uri(AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap())
@@ -202,7 +208,12 @@ async fn oauth_gcp(data_path: &PathBuf) {
         .add_scope(Scope::new("https://www.googleapis.com/auth/generative-language.retriever".to_string()))
         .set_pkce_challenge(pkce_challenge)
         .url();
-    println!("Browse to: {}", auth_url);
+    ui.upgrade_in_event_loop(move |ui_mode| {
+        ui_mode.on_send_signin(move || {
+            auth_url.to_string();
+            open::that(auth_url.to_string()).unwrap();
+        });
+    });
     let http_client = ClientBuilder::new()
         .redirect(Policy::none())
         .build()
@@ -289,7 +300,7 @@ async fn gemini_gcp(token: &str, prompt: &str) -> bool {
     true
 }
 
-fn stt(tx_out: mpsc::Sender<String>) {
+fn stt(tx_out: mpsc::Sender<String>, speaking: Arc<AtomicBool>) {
     let mut model = StreamingModel::load(
         &PathBuf::from("models\\moonshine-streaming-small-onnx"),
         4,
@@ -319,14 +330,16 @@ fn stt(tx_out: mpsc::Sender<String>) {
             let sample = frame.iter().sum::<f32>() / channels as f32;
             audio.push(sample);
         }
-        
         if audio.len() >= sample_rate {
             let skip = (sample_rate / 16000).max(1) as usize;
+            if speaking.load(Ordering::Relaxed) {
+                audio.clear();
+            }
             let filtered: Vec<f32> = audio.iter().step_by(skip).copied().collect();
             let rms = (filtered.iter().map(|x| x * x).sum::<f32>() / filtered.len() as f32).sqrt();
             if rms > 0.002 {
                 let result = model.transcribe(&filtered, &TranscribeOptions::default()).unwrap();
-                if !result.text.is_empty() && result.text != "Thank you." {
+                if !result.text.is_empty() {
                     if tx_out.send(result.text.clone()).is_err() {
                         break;
                     }
@@ -340,54 +353,70 @@ fn stt(tx_out: mpsc::Sender<String>) {
 
 #[tokio::main]
 async fn main() {
+    let ui = AppWindow::new().unwrap();
+    let ui_mode = ui.as_weak();
+    let ui_gcp = ui.as_weak();
+    let ui_api = ui.as_weak();
     let data_path = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
     let user_file = data_path.join("user_gcp.info");
-    let mut gcp_or_api = true;
-    let mut user_data: Option<UserData> = None;
-    let mut mode = String::new();
-    io::stdin().read_line(&mut mode).unwrap();
-    if mode.trim().contains("gcp") {
-        gcp_or_api = false;
-    } else if mode.trim().contains("api") {
-        gcp_or_api = true;
-    }
-    if !gcp_or_api {
-        if std::fs::exists(user_file).unwrap() {
-            user_data = Some(get_data_gcp(&data_path).await);
+    let gcp_or_api = Arc::new(AtomicBool::new(true));
+    let gcp_or_api_clone = gcp_or_api.clone();
+    let speaking = Arc::new(AtomicBool::new(false));
+    let speaking_clone = speaking.clone();
+    let (start_tx, start_rx) = tokio::sync::oneshot::channel();
+    let start_tx = Arc::new(Mutex::new(Some(start_tx)));
+    ui.on_send_mode(move |mode: bool| {
+        if mode {
+            gcp_or_api_clone.store(false, Ordering::Relaxed);
         } else {
-            let _ = std::fs::create_dir_all(&data_path);
-            oauth_gcp(&data_path).await;
-            user_data = Some(get_data_gcp(&data_path).await);
+            gcp_or_api_clone.store(true, Ordering::Relaxed);
         }
-    }
-    let mut api_data: Option<APIData> = None;
-    if gcp_or_api {   
-        api_data = Some(if std::fs::exists(data_path.join("user_api.info")).unwrap() {
-            let auth_data = get_auth(&data_path).await;
-            auth_data
-        } else {
-            let _ = std::fs::create_dir_all(&data_path);
-            auth(&data_path);
-            get_auth(&data_path).await
-        });
-    }
+        if let Some(tx) = start_tx.lock().unwrap().take() {
+            let _ = tx.send(());
+        }
+    });
     let (tx_out, rx_out) = mpsc::channel();
     thread::spawn(move || {
-        stt(tx_out);
+        stt(tx_out, speaking_clone);
     });
-    if !gcp_or_api {
-        let mut user_data = user_data.expect("User data should be initialized");
-        while let Ok(speech) = rx_out.recv() {
-            if !gemini_gcp(user_data.access_token.as_str(), &speech).await {
-                user_data.access_token = refresh_token_gcp(user_data.refresh_token.as_str()).await;
-                gemini_gcp(user_data.access_token.as_str(), &speech).await;
+    tokio::spawn(async move {
+        let _ = start_rx.await;
+        let mut user_data: Option<UserData> = None;
+        if !gcp_or_api.load(Ordering::Relaxed) {
+            if std::fs::exists(user_file).unwrap() {
+                user_data = Some(get_data_gcp(&data_path).await);
+            } else {
+                let _ = std::fs::create_dir_all(&data_path);
+                oauth_gcp(&data_path, ui_mode.clone()).await;
+                user_data = Some(get_data_gcp(&data_path).await);
             }
         }
-    }
-    if gcp_or_api {
-        let api_data = api_data.expect("API data should be initialized");
-        if let Err(e) = gemini_api(api_data.api_key.as_str(), rx_out).await {
-            eprintln!("Gemini session error: {:?}", e);
+        let mut api_data: Option<APIData> = None;
+        if gcp_or_api.load(Ordering::Relaxed) {   
+            api_data = Some(if std::fs::exists(data_path.join("user_api.info")).unwrap() {
+                let auth_data = get_auth(&data_path).await;
+                auth_data
+            } else {
+                let _ = std::fs::create_dir_all(&data_path);
+                auth(&data_path, ui_api.clone());
+                get_auth(&data_path).await
+            });
         }
-    }
+        if !gcp_or_api.load(Ordering::Relaxed) {
+            let mut user_data = user_data.expect("User data should be initialized");
+            while let Ok(speech) = rx_out.recv() {
+                if !gemini_gcp(user_data.access_token.as_str(), &speech).await {
+                    user_data.access_token = refresh_token_gcp(user_data.refresh_token.as_str()).await;
+                    gemini_gcp(user_data.access_token.as_str(), &speech).await;
+                }
+            }
+        }
+        if gcp_or_api.load(Ordering::Relaxed) {
+            let api_data = api_data.expect("API data should be initialized");
+            if let Err(e) = gemini_api(api_data.api_key.as_str(), rx_out).await {
+                eprintln!("Gemini session error: {:?}", e);
+            }
+        }
+    });
+    ui.run().unwrap();
 }

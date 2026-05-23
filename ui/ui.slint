@@ -1,3 +1,60 @@
+import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
+
 export component AppWindow inherits Window {
-    
+    in-out property <bool> mode;
+    in-out property <bool> show_mode: true;
+
+    callback send_signin();
+    callback send_mode(bool);
+    callback send_api(string);
+
+    if (show_mode):
+        VerticalBox {
+            Button {
+                text: "Application Programming Interface (API)";
+                clicked => {
+                    mode = false;
+                    send_mode(mode);
+                    show_mode = false;
+                }
+            }
+            Button {
+                text: "Google Cloud Platform (GCP)";
+                clicked => {
+                    mode = true;
+                    send_mode(mode);
+                    show_mode = false;
+                }
+            }
+        }
+    if (!show_mode && mode):
+        VerticalBox {
+            Button {
+                text: "Back";
+                clicked => {
+                    show_mode = true;
+                }
+            }
+            Button {
+                text: "Sign-In";
+                clicked => {
+                    send_signin();
+                }
+            }
+        }
+    if (!show_mode && !mode):
+        VerticalBox {
+            Button {
+                text: "Back";
+                clicked => {
+                    show_mode = true;
+                }
+            }
+            LineEdit {
+                placeholder-text: "API Key";
+                accepted(text) => {
+                    send_api(text);
+                }
+            }
+        }
 }
