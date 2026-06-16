@@ -6,7 +6,9 @@ edition = "2024"
 
 [dependencies]
 app_dirs2 = "2.5.5"
+base64 = "0.22.1"
 cpal = "0.17.3"
+dirs = "6.0.0"
 gemini-live = "0.1.8"
 magic-crypt = "4.0.1"
 oauth2 = "5.0.0"
@@ -19,6 +21,8 @@ slint = "1.16.1"
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 transcribe-rs = { version = "0.3.11", features = ["onnx"] }
 url = "2.5.8"
+whoami = "2.1.2"
+xcap = "0.9.6"
 
 [build-dependencies]
 slint-build = "1.16.1"
