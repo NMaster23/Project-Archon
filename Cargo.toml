@@ -1,28 +1,18 @@
-[package]
-name = "talos"
-build = "build.rs"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+resolver = "2"
+members = [
+    "crates/runner",
+    "crates/core",
+    "crates/audio",
+    "crates/ai",
+    "crates/executor",
+    "crates/plugins",
+    "crates/ui",
+]
 
-[dependencies]
-app_dirs2 = "2.5.5"
-base64 = "0.22.1"
-cpal = "0.17.3"
-dirs = "6.0.0"
-gemini-live = "0.1.8"
-magic-crypt = "4.0.1"
-oauth2 = "5.0.0"
-open = "5.3.5"
-reqwest = { version = "0.12.28", features = ["json"] }
-rodio = "0.22.2"
-serde = "1.0.228"
-serde_json = "1.0.149"
-slint = "1.16.1"
-tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
-transcribe-rs = { version = "0.3.11", features = ["onnx"] }
-url = "2.5.8"
-whoami = "2.1.2"
-xcap = "0.9.6"
-
-[build-dependencies]
-slint-build = "1.16.1"
+[workspace.dependencies]
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "full"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+log = "0.4.33"
+anyhow = "1.0.103"

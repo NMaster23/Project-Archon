@@ -1,8 +1,1 @@
 /target
-models/moonshine-streaming-small-onnx/tokenizer.bin
-models/moonshine-streaming-small-onnx/streaming_config.json
-*.onnx
-*.ort
-models/moonshine-streaming-small-onnx/._streaming_config.json
-models/moonshine-streaming-small-onnx/._tokenizer.bin
-secrets.txt

@@ -1,0 +1,10 @@
+[package]
+name = "audio"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+talos-core = { path = "../core", package = "core" }
+cpal = "0.18.1"
+rodio = "0.22.2"
+transcribe-rs = { version = "0.3.11", features = ["onnx"] }

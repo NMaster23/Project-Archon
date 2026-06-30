@@ -1,0 +1,15 @@
+[package]
+name = "talos"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { workspace = true }
+log = { workspace = true }
+anyhow = { workspace = true }
+talos-core = { path = "../core", package = "core" }
+talos-audio = { path = "../audio", package = "audio" }
+talos-ai = { path = "../ai", package = "ai" }
+talos-executor = { path = "../executor", package = "executor" }
+talos-plugins = { path = "../plugins", package = "plugins" }
+talos-ui = { path = "../ui", package = "ui" }

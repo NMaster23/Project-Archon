@@ -1,0 +1,12 @@
+[package]
+name = "executor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+talos-core = { path = "../core", package = "core" }
+tokio = { workspace = true }
+open = "5.3.5"
+xcap = "0.9.6"
+whoami = "2.1.2"
+enigo = "0.2"
