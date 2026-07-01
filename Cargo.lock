@@ -185,6 +185,7 @@ dependencies = [
  "portable-pty",
  "reqwest 0.13.4",
  "serde",
+ "serde_json",
  "strip-ansi-escapes",
  "tokio",
 ]
@@ -554,6 +555,7 @@ dependencies = [
  "core",
  "cpal 0.18.1",
  "rodio",
+ "tokio",
  "transcribe-rs",
 ]
 
