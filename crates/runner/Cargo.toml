@@ -13,3 +13,4 @@ talos-ai = { path = "../ai", package = "ai" }
 talos-executor = { path = "../executor", package = "executor" }
 talos-plugins = { path = "../plugins", package = "plugins" }
 talos-ui = { path = "../ui", package = "ui" }
+app_dirs2 = "2.5.5"

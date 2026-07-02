@@ -2,14 +2,14 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use transcribe_rs::models::StreamingModel;
-use transcribe_rs::quantization::Quantization;
-use transcribe_rs::options::TranscribeOptions;
+use transcribe_rs::onnx::moonshine::StreamingModel;
+use transcribe_rs::onnx::Quantization;
+use transcribe_rs::{SpeechModel, TranscribeOptions};
 use talos_core::TalosBus;
 
 pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<AtomicBool>) {
     let mut model = StreamingModel::load(
-        &PathBuf::from("models\\moonshine-streaming-small-onnx"),
+        &PathBuf::from("models\\moonshine-streaming-medium-onnx"),
         4,
         &Quantization::default(),
     ).unwrap();
@@ -19,7 +19,7 @@ pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<A
     let config = device.default_input_config().unwrap().into();
     let (tx, rx) = std::sync::mpsc::channel::<Vec<f32>>();
     let stream = device.build_input_stream(
-        &config,
+        config,
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
             tx.send(data.to_vec()).ok();
         },
