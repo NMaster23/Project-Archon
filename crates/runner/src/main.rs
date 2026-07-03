@@ -2,7 +2,7 @@ use app_dirs2::{get_app_root, AppDataType, AppInfo};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{thread, vec};
-use talos_ai::{UserData, APIData, auth, get_auth, gemini_api};
+use talos_ai::{auth, get_auth, gemini_api, gemini_oauth};
 use talos_audio::stt;
 use talos_core::TalosBus;
 use talos_ui::select_menu;
@@ -25,15 +25,13 @@ async fn main() {
     let (start_tx, start_rx) = tokio::sync::oneshot::channel();
     start_tx.send(()).unwrap();
     let (tx_out, mut rx_out) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
-    let (tx_in, mut _rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
+    let (tx_in, mut rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
     thread::spawn(move || {
         talos_audio::stt(tx_out, speaking_clone);
     });
     let _ = start_rx.await;
-    let mut user_data: Option<UserData> = None;
-    let mut api_data: Option<APIData> = None;
-    if oauth_or_api.load(Ordering::Relaxed) {   
-        api_data = Some(if std::fs::exists(data_path.join("user_api.info")).unwrap() {
+    if oauth_or_api.load(Ordering::Relaxed) {
+        let user_data = Some(if std::fs::exists(data_path.join("user_api.info")).unwrap() {
             let auth_data = get_auth(&data_path).await;
             println!("API completed, UI shown as false.");
             completed_clone.store(true, Ordering::Relaxed);
@@ -45,10 +43,17 @@ async fn main() {
             println!("Created user_api.info");
             get_auth(&data_path).await
         });
-    }
-    if oauth_or_api.load(Ordering::Relaxed) && completed.load(Ordering::Relaxed) {
-        let api_data = api_data.expect("API data should be initialized");
-        if let Err(e) = gemini_api(api_data.api_key.as_str(), rx_out, tx_in).await {
+        
+        if completed.load(Ordering::Relaxed) {
+            let data = user_data.expect("API data should be initialized");
+            if let Err(e) = gemini_api(data.data.as_str(), rx_out, tx_in).await {
+                eprintln!("Gemini session error: {:?}", e);
+            }
+        }
+    } else {
+        println!("OAuth selected, using gemini_oauth...");
+        completed_clone.store(true, Ordering::Relaxed);
+        if let Err(e) = gemini_oauth("", rx_out, tx_in).await {
             eprintln!("Gemini session error: {:?}", e);
         }
     }

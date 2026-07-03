@@ -11,6 +11,7 @@ serde_json = { workspace = true }
 portable-pty = "0.8"
 strip-ansi-escapes = "0.2"
 gemini-live = "0.1.8"
-reqwest = { version = "0.13.4", features = ["json"] }
+reqwest = { version = "0.13.4", features = ["json", "form"] }
 oauth2 = "5.0.0"
 magic-crypt = "4.0.1"
+rodio = "0.22.2"
