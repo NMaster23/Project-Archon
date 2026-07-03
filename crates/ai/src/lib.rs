@@ -145,7 +145,7 @@ pub async fn gemini_oauth(access_token: &str, rx_out: tokio::sync::mpsc::Unbound
     let access_token = token_json["access_token"].as_str().ok_or("Failed to get access token from Google")?;
     let session = Session::connect(SessionConfig {
         transport: TransportConfig {
-            auth: Auth::BearerToken(access_token.to_string()),
+            auth: Auth::EphemeralToken(access_token.to_string()),
             ..Default::default()
         },
         setup: SetupConfig {
