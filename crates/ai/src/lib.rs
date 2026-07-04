@@ -1,14 +1,14 @@
-use std::env::home_dir;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use talos_core::TalosBus;
 use serde::{Serialize, Deserialize};
 use gemini_live::{Session, SessionConfig, TransportConfig, Auth, SetupConfig, GenerationConfig, Modality, ReconnectPolicy, ServerEvent};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::process::Command;
 use portable_pty::{CommandBuilder, native_pty_system, PtySize};
-use tokio::sync::{mpsc, oneshot};
+use tokio::signal::windows::ctrl_break;
+use tokio::sync::mpsc;
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthData {
@@ -21,6 +21,7 @@ pub struct AgySession {
 
 impl AgySession {
     pub fn new(talos_bus_tx: mpsc::UnboundedSender<TalosBus>) -> Result<Self, Box<dyn std::error::Error>> {
+        println!("PTY Start");
         let pty_system = native_pty_system();
         let mut pair = pty_system.openpty(PtySize {
             rows: 24,
@@ -28,53 +29,46 @@ impl AgySession {
             pixel_width: 0,
             pixel_height: 0,
         })?;
-        let cmd = CommandBuilder::new("bash");
+        let cmd = if cfg!(target_os = "windows") {
+            let mut c = CommandBuilder::new("cmd");
+            c.args(&["/C", "agy"]);
+            c
+        } else {
+            let mut c = CommandBuilder::new("agy");
+            c
+        };
         let mut child = pair.slave.spawn_command(cmd)?;
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader()?;
         let mut writer = pair.master.take_writer()?;
-        writer.write_all(b"stty -echo; export PS1=\"\"; export PROMPT_COMMAND=\"\"\n")?;
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
         std::thread::spawn(move || {
-            let mut buffer = [0; 1024];
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            while let Ok(bytes) = reader.read(&mut buffer) {
-                if bytes < buffer.len() { break; }
-            }
-            while let Some(command) = rx.blocking_recv() {
-                let sentinel = "__TALOS_CMD_COMPLETE__";
-                let full_input = format!("{}\necho {}\n", command.trim(), sentinel);
-
-                if writer.write_all(full_input.as_bytes()).is_err() {
-                    break;
-                }
-                let mut accumulated_output = String::new();
-                while let Ok(bytes_read) = reader.read(&mut buffer) {
-                    if bytes_read == 0 { break; }
-
-                    let chunk = String::from_utf8_lossy(&buffer[..bytes_read]);
-                    accumulated_output.push_str(&chunk);
-                    if accumulated_output.contains(sentinel) {
-                        let clean_output = accumulated_output
-                            .replace(&format!("echo {}\r\n", sentinel), "")
-                            .replace(&format!("echo {}\n", sentinel), "")
-                            .replace(&format!("{}\r\n", sentinel), "")
-                            .replace(&format!("{}\n", sentinel), "")
-                            .replace(sentinel, "")
-                            .trim()
-                            .to_string();
-                        let _ = talos_bus_tx.send(TalosBus::TerminalOutput(clean_output));
-                        break;
-                    }
+            let mut buffer = [0; 512];
+            while let Ok(bytes_read) = reader.read(&mut buffer) {
+                if bytes_read == 0 { break; }
+                let clean_bytes = strip_ansi_escapes::strip(&buffer[..bytes_read]);
+                let chunk_str = String::from_utf8_lossy(&clean_bytes).to_string();
+                if !chunk_str.is_empty() {
+                    let _ = talos_bus_tx.send(TalosBus::TerminalOutput(chunk_str));
                 }
             }
             let _ = child.kill();
         });
-
+        std::thread::spawn(move || {
+            while let Some(command) = rx.blocking_recv() {
+                let input = format!("{}\r\n", command.trim());
+                if writer.write_all(input.as_bytes()).is_err() {
+                    break;
+                }
+            }
+        });
+        println!("PTY End");
         Ok(Self { tx })
     }
     pub fn execute(&self, command: &str) {
+        println!("PTY Execute Start");
         self.tx.send(command.to_string()).ok();
+        println!("PTY Execute End");
     }
 }
 

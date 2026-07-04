@@ -4,7 +4,7 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::{prelude::*, widgets::*};
-use std::io::{self, stdout};
+use std::io::stdout;
 
 pub async fn select_menu(options: Vec<&str>) -> usize {
     enable_raw_mode().unwrap();

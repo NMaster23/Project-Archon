@@ -27,8 +27,9 @@ async fn main() {
     start_tx.send(()).unwrap();
     let (tx_out, mut rx_out) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
     let (tx_in, mut rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
+    let tx_out_stt = tx_out.clone();
     thread::spawn(move || {
-        talos_audio::stt(tx_out, speaking_clone);
+        talos_audio::stt(tx_out_stt, speaking_clone);
     });
     let _ = start_rx.await;
     if oauth_or_api.load(Ordering::Relaxed) {
@@ -59,6 +60,22 @@ async fn main() {
         path.push("oauth_creds.json");
         if !path.exists() {
             agy_setup(path).await;
+        }
+        let agy_session = talos_ai::AgySession::new(tx_out.clone()).expect("failed to create session");
+        while let Some(event) = rx_out.recv().await {
+            match event {
+                TalosBus::VoiceTranscript(speech) => {
+                    let processed = speech.trim().to_string();
+                    if !processed.is_empty() {
+                        println!("User Audio: {}", processed);
+                        agy_session.execute(&processed);
+                    }
+                }
+                TalosBus::TerminalOutput(clean_txt) => {
+                    println!("AGY CLI {}", clean_txt);
+                }
+                _ => {}
+            }
         }
     }
 }
