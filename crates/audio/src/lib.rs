@@ -47,7 +47,7 @@ pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<A
             if rms > 0.002 {
                 let result = model.transcribe(&filtered, &TranscribeOptions::default()).unwrap();
                 if !result.text.is_empty() {
-                    if tx_out.send(result.text.clone()).is_err() {
+                    if tx_out.send(TalosBus::VoiceTranscript(result.text.clone())).is_err() {
                         break;
                     }
                     println!("{:?}", result);
