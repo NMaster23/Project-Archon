@@ -5,15 +5,11 @@ use talos_core::TalosBus;
 use serde::{Serialize, Deserialize};
 use gemini_live::{Session, SessionConfig, TransportConfig, Auth, SetupConfig, GenerationConfig, Modality, ReconnectPolicy, ServerEvent};
 use std::time::{Duration, Instant};
+use std::process::Command;
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthData {
     pub data: String,
-}
-
-#[derive(serde::Deserialize)]
-pub struct OauthCredentials {
-    pub refresh_token: String,
 }
 
 pub async fn auth(path: &PathBuf) {
@@ -118,46 +114,19 @@ pub async fn gemini_api(api_key: &str, rx_out: tokio::sync::mpsc::UnboundedRecei
     Ok(())
 }
 
-pub async fn gemini_oauth(access_token: &str, rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosBus>, tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut path = home_dir().ok_or("Home directory not found")?;
-    path.push(".gemini");
-    path.push("oauth_creds.json");
-    if !path.exists() {
-        println!("Please install AntiGravity CLI");
+pub async fn agy_setup(path: PathBuf) {
+    if cfg!(target_os = "windows") {
+        let _ = Command::new("cmd")
+            .args(["/C", "curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd && agy"])
+            .status()
+            .expect("failed to execute process");
+    } else if cfg!(any(target_os = "linux", target_os = "macos")) {
+        let _ = Command::new("sh")
+            .args(["-c", "curl -fsSL https://antigravity.google/cli/install.sh | bash && agy"])
+            .status()
+            .expect("failed to execute process");
+    } else {
+        println!("Unsupported OS");
     }
     println!("Path successfully found at {:?}", path);
-    let file = std::fs::File::open(path)?;
-    let creds: OauthCredentials = serde_json::from_reader(file)?;
-    let client_id = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
-    let client_secret = "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";
-    let client = reqwest::Client::new();
-    let token_resp = client
-        .post("https://oauth2.googleapis.com/token")
-        .form(&[
-            ("client_id", client_id),
-            ("client_secret", client_secret),
-            ("refresh_token", creds.refresh_token.as_str()),
-            ("grant_type", "refresh_token"),
-        ])
-        .send()
-        .await?;
-    let token_json: serde_json::Value = token_resp.json().await?;
-    let access_token = token_json["access_token"].as_str().ok_or("Failed to get access token from Google")?;
-    let session = Session::connect(SessionConfig {
-        transport: TransportConfig {
-            auth: Auth::EphemeralToken(access_token.to_string()),
-            ..Default::default()
-        },
-        setup: SetupConfig {
-            model: "models/gemini-3.1-flash-live-preview".into(),
-            generation_config: Some(GenerationConfig {
-                response_modalities: Some(vec![Modality::Audio]),
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
-        reconnect: ReconnectPolicy::default(),
-    }).await?;
-    gemini_communicate(session, rx_out, tx_in).await?;
-    Ok(())
 }

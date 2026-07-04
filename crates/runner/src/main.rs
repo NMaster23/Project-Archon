@@ -2,7 +2,8 @@ use app_dirs2::{get_app_root, AppDataType, AppInfo};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{thread, vec};
-use talos_ai::{auth, get_auth, gemini_api, gemini_oauth};
+use std::env::home_dir;
+use talos_ai::{auth, get_auth, gemini_api, agy_setup};
 use talos_audio::stt;
 use talos_core::TalosBus;
 use talos_ui::select_menu;
@@ -53,8 +54,11 @@ async fn main() {
     } else {
         println!("OAuth selected, using gemini_oauth...");
         completed_clone.store(true, Ordering::Relaxed);
-        if let Err(e) = gemini_oauth("", rx_out, tx_in).await {
-            eprintln!("Gemini session error: {:?}", e);
+        let mut path = home_dir().ok_or("Home directory not found").unwrap();
+        path.push(".gemini");
+        path.push("oauth_creds.json");
+        if !path.exists() {
+            agy_setup(path).await;
         }
     }
 }
