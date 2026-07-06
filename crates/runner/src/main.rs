@@ -61,14 +61,17 @@ async fn main() {
         if !path.exists() {
             agy_setup(path).await;
         }
-        let agy_session = talos_ai::AgySession::new(tx_out.clone()).expect("failed to create session");
+        let mut new_chat = true;
         while let Some(event) = rx_out.recv().await {
             match event {
                 TalosBus::VoiceTranscript(speech) => {
                     let processed = speech.trim().to_string();
                     if !processed.is_empty() {
                         println!("User Audio: {}", processed);
-                        agy_session.execute(&processed);
+                        if let Err(e) = talos_ai::agy_communicate(new_chat, tx_out.clone(), &processed).await {
+                            eprintln!("Agent communication error: {:?}", e);
+                        }
+                        new_chat = false;
                     }
                 }
                 TalosBus::TerminalOutput(clean_txt) => {
