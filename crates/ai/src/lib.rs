@@ -7,7 +7,6 @@ use gemini_live::{Session, SessionConfig, TransportConfig, Auth, SetupConfig, Ge
 use std::time::Duration;
 use std::process::Command;
 use portable_pty::{CommandBuilder, native_pty_system, PtySize};
-use tokio::signal::windows::ctrl_break;
 use tokio::sync::mpsc;
 
 #[derive(Serialize, Deserialize)]
@@ -29,7 +28,7 @@ impl AgySession {
             pixel_width: 0,
             pixel_height: 0,
         })?;
-        let cmd = if cfg!(target_os = "windows") {
+        let mut cmd = if cfg!(target_os = "windows") {
             let mut c = CommandBuilder::new("cmd");
             c.args(&["/C", "agy"]);
             c
@@ -37,6 +36,9 @@ impl AgySession {
             let mut c = CommandBuilder::new("agy");
             c
         };
+        cmd.env("CI", "true");
+        cmd.env("TERM", "dumb");
+        cmd.env("NO_COLOR", "1");
         let mut child = pair.slave.spawn_command(cmd)?;
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader()?;
@@ -191,4 +193,28 @@ pub async fn agy_setup(path: PathBuf) {
         println!("Unsupported OS");
     }
     println!("Path successfully found at {:?}", path);
+}
+
+pub async fn agy_communicate(new_chat: bool, talos_bus_tx: mpsc::UnboundedSender<TalosBus>, input: &str) -> Result<(), Box<dyn std::error::Error>>  {
+    println!("PTY Start");
+    let mut cmd = if cfg!(target_os = "windows") {
+        let mut c = std::process::Command::new("cmd");
+        c.args(&["/C", "agy"]);
+        c
+    } else {
+        let mut c = std::process::Command::new("agy");
+        c
+    };
+    if new_chat {
+        cmd.args(["-p", input.trim()]);
+    } else {
+        cmd.args(["-c", "-p", input.trim()]);
+    }
+    let agy_output = cmd.output()?;
+    let text = String::from_utf8(agy_output.stdout)?.to_string();
+    if !text.is_empty() {
+        talos_bus_tx.send(TalosBus::TerminalOutput(text))?;
+    }
+    println!("PTY End");
+    Ok(())
 }
