@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use gemini_live::{Session, SessionConfig, TransportConfig, Auth, SetupConfig, GenerationConfig, Modality, ReconnectPolicy, ServerEvent};
 use std::time::Duration;
 use std::process::Command;
-use portable_pty::{CommandBuilder, native_pty_system, PtySize};
+use tokio::io::{self, AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 #[derive(Serialize, Deserialize)]
@@ -14,10 +14,33 @@ pub struct AuthData {
     pub data: String,
 }
 
+pub struct StreamingSource {
+    receiver: std::sync::mpsc::Receiver<f32>,
+}
+
+impl Iterator for StreamingSource {
+    type Item = f32;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.receiver.try_recv() {
+            Ok(sample) => Some(sample),
+            Err(_) => Some(0.0),
+        }
+    }
+}
+
+impl rodio::Source for StreamingSource {
+    fn current_span_len(&self) -> Option<usize> { None }
+    fn channels(&self) -> std::num::NonZeroU16 { std::num::NonZeroU16::new(1).unwrap() }
+    fn sample_rate(&self) -> std::num::NonZeroU32 { std::num::NonZeroU32::new(24000).unwrap() }
+    fn total_duration(&self) -> Option<Duration> { None }
+}
+
 pub async fn auth(path: &PathBuf) {
     let mut api_key = String::new();
     println!("Please enter your Gemini API key:");
-    std::io::stdin().read_line(&mut api_key).unwrap();
+    let stdin = io::stdin();
+    let mut reader = BufReader::new(stdin);
+    reader.read_line(&mut api_key).await.unwrap();
     let auth_data = AuthData { data: api_key.trim().to_string() };
     let json = serde_json::to_string(&auth_data).unwrap();
     fs::write(path.join("user_api.info"), json).unwrap();
@@ -32,7 +55,11 @@ pub async fn gemini_communicate_speech(mut session: Session, mut rx_out: tokio::
     let handle = rodio::DeviceSinkBuilder::open_default_sink()
         .expect("open default audio stream");
     let player = rodio::Player::connect_new(&handle.mixer());
+    let (tx_audio, rx_audio) = std::sync::mpsc::channel::<f32>();
+    let stream_source = StreamingSource { receiver: rx_audio };
+    player.append(stream_source);
     player.play();
+    let mut audio_buffer: Vec<u8> = Vec::new();
     loop {
         let mut speech = String::new();
         match rx_out.recv().await {
@@ -66,20 +93,17 @@ pub async fn gemini_communicate_speech(mut session: Session, mut rx_out: tokio::
         session.send_text(&speech).await?;
         println!("User: {}", speech);
         let mut gemini_response = String::new();
-        let mut audio_buffer: Vec<u8> = Vec::new();
         while let Some(event) = session.next_event().await {
             match event {
                 ServerEvent::ModelAudio(audio) => {
                     print!("{:?}", audio.len());
                     audio_buffer.extend_from_slice(&audio);
                     let valid_len = audio_buffer.len() - (audio_buffer.len() % 2);
-                    let samples: Vec<f32> = audio_buffer[..valid_len]
-                        .chunks_exact(2)
-                        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0)
-                        .collect();
+                    for chunk in audio_buffer[..valid_len].chunks_exact(2) {
+                        let sample = i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0;
+                        tx_audio.send(sample)?;
+                    }
                     audio_buffer.drain(..valid_len);
-                    let source = rodio::buffer::SamplesBuffer::new(std::num::NonZeroU16::new(1).unwrap(), std::num::NonZeroU32::new(24000).unwrap(), samples);
-                    player.append(source);
                 }
                 ServerEvent::ModelText(text) => {
                     print!("{text}");
@@ -135,14 +159,55 @@ pub async fn agy_setup(path: PathBuf) {
     println!("Path successfully found at {:?}", path);
 }
 
+pub struct AgySession {
+    process: tokio::process::Child,
+}
+
+impl AgySession {
+    pub fn new() -> Self {
+        let mut cmd = if cfg!(target_os = "windows") {
+            let mut c = tokio::process::Command::new("cmd");
+            c.args(&["/C", "agy"]);
+            c
+        } else {
+            tokio::process::Command::new("agy")
+        };
+        let process = cmd
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("Failed to start agy");
+        Self { process }
+    }
+
+    pub async fn prompt(&mut self, input: &str) -> String {
+        let stdin = self.process.stdin.as_mut().unwrap();
+        tokio::io::AsyncWriteExt::write_all(stdin, format!("{}\n", input).as_bytes()).await.unwrap();
+        tokio::io::AsyncWriteExt::flush(stdin).await.unwrap();
+
+        let stdout = self.process.stdout.as_mut().unwrap();
+        let mut reader = tokio::io::BufReader::new(stdout);
+        let mut response = String::new();
+        let mut buf = String::new();
+        
+        while let Ok(Ok(bytes)) = tokio::time::timeout(std::time::Duration::from_millis(500), tokio::io::AsyncBufReadExt::read_line(&mut reader, &mut buf)).await {
+            if bytes == 0 { break; }
+            response.push_str(&buf);
+            buf.clear();
+        }
+        response
+    }
+}
+
+
 pub async fn agy_communicate(new_chat: bool, talos_bus_tx: mpsc::UnboundedSender<TalosBus>, input: &str) -> Result<(), Box<dyn std::error::Error>>  {
     println!("Command Start");
     let mut cmd = if cfg!(target_os = "windows") {
-        let mut c = std::process::Command::new("cmd");
+        let mut c = Command::new("cmd");
         c.args(&["/C", "agy"]);
         c
     } else {
-        let mut c = std::process::Command::new("agy");
+        let mut c = Command::new("agy");
         c
     };
     if new_chat {
