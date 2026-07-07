@@ -15,3 +15,6 @@ reqwest = { version = "0.13.4", features = ["json", "form"] }
 oauth2 = "5.0.0"
 magic-crypt = "4.0.1"
 rodio = "0.22.2"
+ratatui = "0.30.2"
+tui-prompts = "0.6.7"
+crossterm = "0.29.0"

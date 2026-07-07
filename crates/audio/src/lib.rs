@@ -18,7 +18,6 @@ pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<A
     ).unwrap();
     let host = cpal::default_host();
     let device = host.default_input_device().expect("no output device available");
-    println!("{}", device.description().unwrap());
     let config = device.default_input_config().unwrap().into();
     let (tx, rx) = std::sync::mpsc::channel::<Vec<f32>>();
     let stream = device.build_input_stream(

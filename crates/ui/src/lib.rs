@@ -5,6 +5,9 @@ use crossterm::{
 };
 use ratatui::{prelude::*, widgets::*};
 use std::io::stdout;
+use std::sync::{mpsc, Arc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 pub async fn select_menu(options: Vec<&str>) -> usize {
     enable_raw_mode().unwrap();
@@ -66,4 +69,59 @@ pub async fn select_menu(options: Vec<&str>) -> usize {
     disable_raw_mode().unwrap();
     stdout().execute(LeaveAlternateScreen).unwrap();
     default_index
+}
+
+pub async fn dashboard(stt_enabled: Arc<AtomicBool>, rx_out: tokio::sync::mpsc::UnboundedReceiver<String>) {
+    enable_raw_mode().unwrap();
+    stdout().execute(EnterAlternateScreen).unwrap();
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).unwrap();
+    let mut chat_history: Vec<String> = Vec::new();
+    loop {
+        terminal.draw(|f| {
+            let stt_status_text = if stt_enabled.load(Ordering::Relaxed) {
+                "STT Status: Muted (Press 'm' to unmute)"
+            } else {
+                "STT Status: Unmuted (Press 'm' to mute)"
+            };
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(30), Constraint::Min(0)])
+                .split(f.area());
+            let stt_show_text = Paragraph::new(stt_status_text)
+                .style(if stt_enabled.load(Ordering::Relaxed) {
+                    Style::default().fg(Color::Red)
+                } else {
+                    Style::default().fg(Color::Green)
+                })
+                .block(Block::default().borders(Borders::ALL).title("Talos Dashboard"));
+            f.render_widget(stt_show_text, chunks[1]);
+        }).unwrap();
+        if event::poll(Duration::from_millis(16)).unwrap() {
+            if let Event::Key(key) = event::read().unwrap() {
+                if key.kind == KeyEventKind::Press {
+                    match key.code {
+                        KeyCode::Char('m') => {
+                            let current_state = stt_enabled.load(Ordering::Relaxed);
+                            stt_enabled.store(!current_state, Ordering::Relaxed);
+                        }
+                        KeyCode::Char('q') => break,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        while let Ok(message) = rx_out.try_recv() {
+            match message {
+                TalosBus::VoiceTranscript(text) => {
+                    chat_history.push(format!("You: {}", text));
+                }
+                TalosBus::TerminalOutput(text) => {
+                    chat_history.push(format!("AI: {}", text));
+                }
+                _ => {}
+            }
+        }
+    }
+    disable_raw_mode().unwrap();
+    stdout().execute(LeaveAlternateScreen).unwrap();
 }

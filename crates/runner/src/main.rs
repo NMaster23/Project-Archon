@@ -6,14 +6,13 @@ use std::env::home_dir;
 use talos_ai::{auth, get_auth, gemini_api, agy_setup};
 use talos_audio::stt;
 use talos_core::TalosBus;
-use talos_ui::select_menu;
+use talos_ui::{dashboard, select_menu};
 
 const APP_INFO: AppInfo = AppInfo{name: "Talos", author: "NMCreator"};
 
 #[tokio::main]
 async fn main() {
     let data_path = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
-    let user_file = data_path.join("user_oauth.info");
     let completed = Arc::new(AtomicBool::new(false));
     let completed_clone = completed.clone();
     let speaking = Arc::new(AtomicBool::new(false));
@@ -21,21 +20,21 @@ async fn main() {
     let options = vec!["API", "OAuth"];
     let selection = select_menu(options).await;
     let oauth_or_api = Arc::new(AtomicBool::new(selection == 0));
-    let oauth_or_api_clone = oauth_or_api.clone();
-    println!("Selected mode: {}", if selection == 0 { "API" } else { "OAuth" });
+    let stt_enabled = Arc::new(AtomicBool::new(false));
     let (start_tx, start_rx) = tokio::sync::oneshot::channel();
     start_tx.send(()).unwrap();
     let (tx_out, mut rx_out) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
-    let (tx_in, mut rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
+    let (tx_in, _rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
     let tx_out_stt = tx_out.clone();
-    thread::spawn(move || {
-        talos_audio::stt(tx_out_stt, speaking_clone);
-    });
+    if stt_enabled.load(Ordering::Relaxed) {
+        thread::spawn(move || {
+            stt(tx_out_stt, speaking_clone);
+        });
+    }
     let _ = start_rx.await;
     if oauth_or_api.load(Ordering::Relaxed) {
         let user_data = Some(if std::fs::exists(data_path.join("user_api.info")).unwrap() {
             let auth_data = get_auth(&data_path).await;
-            println!("API completed, UI shown as false.");
             completed_clone.store(true, Ordering::Relaxed);
             auth_data
         } else {
@@ -45,7 +44,6 @@ async fn main() {
             println!("Created user_api.info");
             get_auth(&data_path).await
         });
-        
         if completed.load(Ordering::Relaxed) {
             let data = user_data.expect("API data should be initialized");
             if let Err(e) = gemini_api(data.data.as_str(), rx_out, tx_in).await {
@@ -61,24 +59,7 @@ async fn main() {
         if !path.exists() {
             agy_setup(path).await;
         }
-        let mut new_chat = true;
-        while let Some(event) = rx_out.recv().await {
-            match event {
-                TalosBus::VoiceTranscript(speech) => {
-                    let processed = speech.trim().to_string();
-                    if !processed.is_empty() {
-                        println!("User Audio: {}", processed);
-                        if let Err(e) = talos_ai::agy_communicate(new_chat, tx_out.clone(), &processed).await {
-                            eprintln!("Agent communication error: {:?}", e);
-                        }
-                        new_chat = false;
-                    }
-                }
-                TalosBus::TerminalOutput(clean_txt) => {
-                    println!("AGY CLI {}", clean_txt);
-                }
-                _ => {}
-            }
-        }
+        let agy_session = talos_ai::AgySession::new(tx_out.clone()).expect("failed to create session");
+        dashboard(stt_enabled, rx_out).await;
     }
 }
