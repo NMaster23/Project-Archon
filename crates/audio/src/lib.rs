@@ -10,7 +10,7 @@ use webrtc_vad::*;
 use webrtc_vad::SampleRate::Rate16kHz;
 use webrtc_vad::VadMode::Quality;
 
-pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<AtomicBool>) {
+pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<AtomicBool>, stt_enabled: Arc<AtomicBool>) {
     let mut model = StreamingModel::load(
         &PathBuf::from("models\\moonshine-streaming-medium-onnx"),
         4,
@@ -42,7 +42,7 @@ pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<A
             let sample = frame.iter().sum::<f32>() / channels as f32;
             audio.push(sample);
             let chunk_size = (sample_rate * 30) / 1000;
-            if speaking.load(Ordering::Relaxed) {
+            if speaking.load(Ordering::Relaxed) || !stt_enabled.load(Ordering::Relaxed) {
                 audio.clear();
                 speech_buffer.clear();
             }

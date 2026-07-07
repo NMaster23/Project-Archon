@@ -20,17 +20,18 @@ async fn main() {
     let options = vec!["API", "OAuth"];
     let selection = select_menu(options).await;
     let oauth_or_api = Arc::new(AtomicBool::new(selection == 0));
-    let stt_enabled = Arc::new(AtomicBool::new(false));
+    let stt_enabled = Arc::new(AtomicBool::new(true)); // Start unmuted
+    let stt_enabled_clone = stt_enabled.clone();
     let (start_tx, start_rx) = tokio::sync::oneshot::channel();
     start_tx.send(()).unwrap();
     let (tx_out, mut rx_out) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
     let (tx_in, _rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
     let tx_out_stt = tx_out.clone();
-    if stt_enabled.load(Ordering::Relaxed) {
-        thread::spawn(move || {
-            stt(tx_out_stt, speaking_clone);
-        });
-    }
+    
+    // Always spawn the STT thread, let the mute button control it internally!
+    thread::spawn(move || {
+        stt(tx_out_stt, speaking_clone, stt_enabled_clone);
+    });
     let _ = start_rx.await;
     if oauth_or_api.load(Ordering::Relaxed) {
         let user_data = Some(if std::fs::exists(data_path.join("user_api.info")).unwrap() {
@@ -60,6 +61,27 @@ async fn main() {
             agy_setup(path).await;
         }
         let agy_session = talos_ai::AgySession::new(tx_out.clone()).expect("failed to create session");
-        dashboard(stt_enabled, rx_out).await;
+        
+        let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        
+        tokio::spawn(async move {
+            dashboard(stt_enabled, ui_rx).await;
+        });
+        ui_tx.send("System: Dashboard successfully started!".to_string());
+        while let Some(event) = rx_out.recv().await {
+            match event {
+                TalosBus::VoiceTranscript(speech) => {
+                    let processed = speech.trim().to_string();
+                    if !processed.is_empty() {
+                        let _ = ui_tx.send(format!("You: {}", processed));
+                        agy_session.execute(&processed);
+                    }
+                }
+                TalosBus::TerminalOutput(clean_txt) => {
+                    let _ = ui_tx.send(format!("AI: {}", clean_txt));
+                }
+                _ => {}
+            }
+        }
     }
 }

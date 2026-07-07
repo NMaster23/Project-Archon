@@ -5,7 +5,7 @@ use crossterm::{
 };
 use ratatui::{prelude::*, widgets::*};
 use std::io::stdout;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -71,7 +71,7 @@ pub async fn select_menu(options: Vec<&str>) -> usize {
     default_index
 }
 
-pub async fn dashboard(stt_enabled: Arc<AtomicBool>, rx_out: tokio::sync::mpsc::UnboundedReceiver<String>) {
+pub async fn dashboard(stt_enabled: Arc<AtomicBool>, mut rx_out: tokio::sync::mpsc::UnboundedReceiver<String>) {
     enable_raw_mode().unwrap();
     stdout().execute(EnterAlternateScreen).unwrap();
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).unwrap();
@@ -95,6 +95,10 @@ pub async fn dashboard(stt_enabled: Arc<AtomicBool>, rx_out: tokio::sync::mpsc::
                 })
                 .block(Block::default().borders(Borders::ALL).title("Talos Dashboard"));
             f.render_widget(stt_show_text, chunks[1]);
+            
+            let items: Vec<ListItem> = chat_history.iter().map(|msg| ListItem::new(msg.as_str())).collect();
+            let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Chat"));
+            f.render_widget(list, chunks[0]);
         }).unwrap();
         if event::poll(Duration::from_millis(16)).unwrap() {
             if let Event::Key(key) = event::read().unwrap() {
@@ -111,15 +115,7 @@ pub async fn dashboard(stt_enabled: Arc<AtomicBool>, rx_out: tokio::sync::mpsc::
             }
         }
         while let Ok(message) = rx_out.try_recv() {
-            match message {
-                TalosBus::VoiceTranscript(text) => {
-                    chat_history.push(format!("You: {}", text));
-                }
-                TalosBus::TerminalOutput(text) => {
-                    chat_history.push(format!("AI: {}", text));
-                }
-                _ => {}
-            }
+            chat_history.push(message);
         }
     }
     disable_raw_mode().unwrap();
