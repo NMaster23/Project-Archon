@@ -3,7 +3,8 @@ use image::ImageFormat::{Jpeg, Png};
 use rust_mcp_sdk::schema::Tool;
 use xcap::image::{ImageFormat, RgbaImage};
 use xcap::{Frame, Monitor};
-use serde_json::json;
+use serde_json::{json, Value};
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 
 pub struct MouseMovement {
     pub x: i32,
@@ -12,6 +13,77 @@ pub struct MouseMovement {
 
 pub struct KeyboardInput {
     pub text: String,
+}
+
+pub struct McpControl;
+
+impl McpControl {
+    pub fn handle_tool_execution(tool_name: &str, arguments: &Value) -> Result<String, String> {
+        match tool_name {
+            "mouse_click" => Self::execute_mouse_click(arguments),
+            "type_text" => Self::execute_type_text(arguments),
+            "press_key" => Self::execute_press_key(arguments),
+            "scroll" => Self::execute_scroll(arguments),
+            _ => Err(format!("Unknown tool requested: {}", tool_name)),
+        }
+    }
+
+    fn execute_mouse_click(args: &Value) -> Result<String, String> {
+        let x = args.get("x").and_then(|v| v.as_i64()).ok_or("Missing or invalid 'x' coordinate")? as i32;
+        let y = args.get("y").and_then(|v| v.as_i64()).ok_or("Missing or invalid 'y' coordinate")? as i32;
+        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+        enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
+        enigo.button(Button::Left, Direction::Click).map_err(|e| e.to_string())?;
+        Ok(format!("Successfully clicked at coordinates ({}, {})", x, y))
+    }
+
+    fn execute_type_text(args: &Value) -> Result<String, String> {
+        let text = args.get("text").and_then(|v| v.as_str()).ok_or("Missing or invalid 'text' argument")?;
+        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+        enigo.text(text).map_err(|e| e.to_string())?;
+        Ok(format!("Successfully typed the requested text."))
+    }
+    fn execute_press_key(args: &Value) -> Result<String, String> {
+        let key_str = args.get("key").and_then(|v| v.as_str()).ok_or("Missing or invalid 'key' argument")?;
+        let key = Self::parse_key_string(key_str).ok_or_else(|| format!("Unsupported key: {}", key_str))?;
+
+        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+        enigo.key(key, Direction::Click).map_err(|e| e.to_string())?;
+        Ok(format!("Successfully pressed the '{}' key.", key_str))
+    }
+
+    fn execute_scroll(args: &Value) -> Result<String, String> {
+        let lines = args.get("lines").and_then(|v| v.as_i64()).ok_or("Missing or invalid 'lines' argument")? as i32;
+        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+        enigo.scroll(lines, Axis::Vertical).map_err(|e| e.to_string())?;
+        Ok(format!("Successfully scrolled {} lines.", lines))
+    }
+
+    fn parse_key_string(key_str: &str) -> Option<Key> {
+        match key_str.to_lowercase().as_str() {
+            "enter" | "return" => Some(Key::Return),
+            "tab" => Some(Key::Tab),
+            "space" => Some(Key::Space),
+            "escape" | "esc" => Some(Key::Escape),
+            "backspace" => Some(Key::Backspace),
+            "up" => Some(Key::UpArrow),
+            "down" => Some(Key::DownArrow),
+            "left" => Some(Key::LeftArrow),
+            "right" => Some(Key::RightArrow),
+            "shift" => Some(Key::Shift),
+            "control" | "ctrl" => Some(Key::Control),
+            "alt" => Some(Key::Alt),
+            "super" | "win" | "cmd" => Some(Key::Meta), // Super/Win are now grouped under Meta
+            other => {
+                if other.chars().count() == 1 {
+                    // `Key::Layout` is gone, use `Key::Unicode` for characters
+                    Some(Key::Unicode(other.chars().next().unwrap()))
+                } else {
+                    None
+                }
+            }
+        }
+    }
 }
 
 pub async fn screen_cap() {
