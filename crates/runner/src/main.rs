@@ -25,8 +25,12 @@ async fn main() {
     let (start_tx, start_rx) = tokio::sync::oneshot::channel();
     start_tx.send(()).unwrap();
     let (tx_out, mut rx_out) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
-    let (tx_in, _rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
+    let (tx_in, mut rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
     let tx_out_stt = tx_out.clone();
+    let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    tokio::spawn(async move {
+        dashboard(stt_enabled, ui_rx).await;
+    });
     
     // Always spawn the STT thread, let the mute button control it internally!
     thread::spawn(move || {
@@ -47,6 +51,14 @@ async fn main() {
         });
         if completed.load(Ordering::Relaxed) {
             let data = user_data.expect("API data should be initialized");
+            let ui_tx_api = ui_tx.clone();
+            tokio::spawn(async move {
+                while let Some(msg) = rx_in.recv().await {
+                    if let TalosBus::TerminalOutput(txt) = msg {
+                        let _ = ui_tx_api.send(txt);
+                    }
+                }
+            });
             if let Err(e) = gemini_api(data.data.as_str(), rx_out, tx_in).await {
                 eprintln!("Gemini session error: {:?}", e);
             }
@@ -61,10 +73,6 @@ async fn main() {
             agy_setup(path).await;
         }
         let agy_session = talos_ai::AgySession::new(tx_out.clone()).expect("failed to create session");
-        let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        tokio::spawn(async move {
-            dashboard(stt_enabled, ui_rx).await;
-        });
         while let Some(event) = rx_out.recv().await {
             match event {
                 TalosBus::VoiceTranscript(speech) => {

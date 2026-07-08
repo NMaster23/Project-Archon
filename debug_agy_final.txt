@@ -1,0 +1,5 @@
+RAW:
+"Hello! How can I help you today?\r\n\u{1b}]0;C:\\WINDOWS\\system32\\cmd.EXE\u{7} \r\n__TALOS_CMD_COMPLETE__\r\n"
+
+CLEAN:
+"Hello! How can I help you today?\r\n\u{1b}]0;C:\\WINDOWS\\system32\\cmd.EXE\u{7}"

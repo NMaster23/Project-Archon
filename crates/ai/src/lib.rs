@@ -77,7 +77,9 @@ impl AgySession {
             while let Some(command) = rx.blocking_recv() {
                 let start_signal = "__START__";
                 let end_signal = "__TALOS_CMD_COMPLETE__";
-                let full_input = format!("echo {} & {} & echo {}\n", start_signal, command.trim(), end_signal);
+                let safe_cmd = command.trim().replace("\"", "\\\"");
+                let agy_command = format!("agy -p \"{}\"", safe_cmd);
+                let full_input = format!("echo {}& {} & echo {}\n", start_signal, agy_command, end_signal);
 
                 if writer.write_all(full_input.as_bytes()).is_err() {
                     break;
@@ -92,10 +94,10 @@ impl AgySession {
                         let clean_output = accumulated_output
                             .split(start_signal)
                             .last()
-                            .unwrap()
+                            .unwrap_or("")
                             .split(end_signal)
                             .next()
-                            .unwrap()
+                            .unwrap_or("")
                             .trim()
                             .to_string();
                         let _ = talos_bus_tx.send(TalosBus::TerminalOutput(clean_output));
@@ -208,6 +210,7 @@ pub async fn gemini_communicate_speech(mut session: Session, mut rx_out: tokio::
         }
         session.send_text(&speech).await?;
         println!("User: {}", speech);
+        let _ = _tx_in.send(TalosBus::TerminalOutput(format!("You: {}", speech)));
         let mut gemini_response = String::new();
         while let Some(event) = session.next_event().await {
             match event {
@@ -228,6 +231,7 @@ pub async fn gemini_communicate_speech(mut session: Session, mut rx_out: tokio::
                 ServerEvent::TurnComplete => {
                     println!("\n--- turn done ---");
                     println!("Gemini: {}", gemini_response);
+                    let _ = _tx_in.send(TalosBus::TerminalOutput(format!("AI: {}", gemini_response)));
                     break;
                 }
                 _ => {}
