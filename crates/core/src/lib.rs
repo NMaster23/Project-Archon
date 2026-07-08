@@ -1,6 +1,6 @@
 pub enum TalosBus {
     VoiceTranscript(String),
-    ScreenCapture(String),
+    ScreenCapture(Vec<u8>),
     AiResponse(String),
     UserCredentials(String),
     TerminalOutput(String),

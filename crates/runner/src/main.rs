@@ -20,7 +20,7 @@ async fn main() {
     let options = vec!["API", "OAuth"];
     let selection = select_menu(options).await;
     let oauth_or_api = Arc::new(AtomicBool::new(selection == 0));
-    let stt_enabled = Arc::new(AtomicBool::new(true)); // Start unmuted
+    let stt_enabled = Arc::new(AtomicBool::new(true));
     let stt_enabled_clone = stt_enabled.clone();
     let (start_tx, start_rx) = tokio::sync::oneshot::channel();
     start_tx.send(()).unwrap();
@@ -61,13 +61,10 @@ async fn main() {
             agy_setup(path).await;
         }
         let agy_session = talos_ai::AgySession::new(tx_out.clone()).expect("failed to create session");
-        
         let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        
         tokio::spawn(async move {
             dashboard(stt_enabled, ui_rx).await;
         });
-        ui_tx.send("System: Dashboard successfully started!".to_string());
         while let Some(event) = rx_out.recv().await {
             match event {
                 TalosBus::VoiceTranscript(speech) => {

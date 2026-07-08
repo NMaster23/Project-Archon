@@ -85,7 +85,7 @@ pub async fn dashboard(stt_enabled: Arc<AtomicBool>, mut rx_out: tokio::sync::mp
             };
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(30), Constraint::Min(0)])
+                .constraints([Constraint::Length(3), Constraint::Min(3)])
                 .split(f.area());
             let stt_show_text = Paragraph::new(stt_status_text)
                 .style(if stt_enabled.load(Ordering::Relaxed) {
@@ -94,11 +94,15 @@ pub async fn dashboard(stt_enabled: Arc<AtomicBool>, mut rx_out: tokio::sync::mp
                     Style::default().fg(Color::Green)
                 })
                 .block(Block::default().borders(Borders::ALL).title("Talos Dashboard"));
-            f.render_widget(stt_show_text, chunks[1]);
+            f.render_widget(stt_show_text, chunks[0]);
             
             let items: Vec<ListItem> = chat_history.iter().map(|msg| ListItem::new(msg.as_str())).collect();
             let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Chat"));
-            f.render_widget(list, chunks[0]);
+            let mut list_state = ListState::default();
+            if !chat_history.is_empty() {
+                list_state.select(Some(chat_history.len() - 1));
+            }
+            f.render_stateful_widget(list, chunks[1], &mut list_state);
         }).unwrap();
         if event::poll(Duration::from_millis(16)).unwrap() {
             if let Event::Key(key) = event::read().unwrap() {

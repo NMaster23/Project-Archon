@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 talos-core = { path = "../core", package = "core" }
 tokio = { workspace = true }
-open = "5.3.5"
 xcap = "0.9.6"
-whoami = "2.1.2"
-enigo = "0.2"
+image = "0.25.10"
+enigo = "0.6.1"
+rust-mcp-sdk = "0.10.0"
+serde_json = "1.0.150"
