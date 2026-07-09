@@ -1,10 +1,10 @@
-use std::io::Cursor;
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use image::ImageFormat::{Jpeg, Png};
 use rust_mcp_sdk::schema::Tool;
+use serde_json::{Value, json};
+use std::io::Cursor;
 use xcap::image::{ImageFormat, RgbaImage};
 use xcap::{Frame, Monitor};
-use serde_json::{json, Value};
-use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 
 pub struct MouseMovement {
     pub x: i32,
@@ -29,33 +29,60 @@ impl McpControl {
     }
 
     fn execute_mouse_click(args: &Value) -> Result<String, String> {
-        let x = args.get("x").and_then(|v| v.as_i64()).ok_or("Missing or invalid 'x' coordinate")? as i32;
-        let y = args.get("y").and_then(|v| v.as_i64()).ok_or("Missing or invalid 'y' coordinate")? as i32;
+        let x = args
+            .get("x")
+            .and_then(|v| v.as_i64())
+            .ok_or("Missing or invalid 'x' coordinate")? as i32;
+        let y = args
+            .get("y")
+            .and_then(|v| v.as_i64())
+            .ok_or("Missing or invalid 'y' coordinate")? as i32;
         let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
-        enigo.button(Button::Left, Direction::Click).map_err(|e| e.to_string())?;
-        Ok(format!("Successfully clicked at coordinates ({}, {})", x, y))
+        enigo
+            .move_mouse(x, y, Coordinate::Abs)
+            .map_err(|e| e.to_string())?;
+        enigo
+            .button(Button::Left, Direction::Click)
+            .map_err(|e| e.to_string())?;
+        Ok(format!(
+            "Successfully clicked at coordinates ({}, {})",
+            x, y
+        ))
     }
 
     fn execute_type_text(args: &Value) -> Result<String, String> {
-        let text = args.get("text").and_then(|v| v.as_str()).ok_or("Missing or invalid 'text' argument")?;
+        let text = args
+            .get("text")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing or invalid 'text' argument")?;
         let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
         enigo.text(text).map_err(|e| e.to_string())?;
         Ok(format!("Successfully typed the requested text."))
     }
     fn execute_press_key(args: &Value) -> Result<String, String> {
-        let key_str = args.get("key").and_then(|v| v.as_str()).ok_or("Missing or invalid 'key' argument")?;
-        let key = Self::parse_key_string(key_str).ok_or_else(|| format!("Unsupported key: {}", key_str))?;
+        let key_str = args
+            .get("key")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing or invalid 'key' argument")?;
+        let key = Self::parse_key_string(key_str)
+            .ok_or_else(|| format!("Unsupported key: {}", key_str))?;
 
         let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo.key(key, Direction::Click).map_err(|e| e.to_string())?;
+        enigo
+            .key(key, Direction::Click)
+            .map_err(|e| e.to_string())?;
         Ok(format!("Successfully pressed the '{}' key.", key_str))
     }
 
     fn execute_scroll(args: &Value) -> Result<String, String> {
-        let lines = args.get("lines").and_then(|v| v.as_i64()).ok_or("Missing or invalid 'lines' argument")? as i32;
+        let lines = args
+            .get("lines")
+            .and_then(|v| v.as_i64())
+            .ok_or("Missing or invalid 'lines' argument")? as i32;
         let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo.scroll(lines, Axis::Vertical).map_err(|e| e.to_string())?;
+        enigo
+            .scroll(lines, Axis::Vertical)
+            .map_err(|e| e.to_string())?;
         Ok(format!("Successfully scrolled {} lines.", lines))
     }
 
@@ -104,16 +131,18 @@ pub async fn screen_cap() {
     video_recorder.start().unwrap();
 }
 
-pub async  fn encode(frame: Frame, image_format: ImageFormat) {
-    let image = RgbaImage::from_raw(frame.width, frame.height, frame.raw)
-        .expect("Failed to create image");
+pub async fn encode(frame: Frame, image_format: ImageFormat) {
+    let image =
+        RgbaImage::from_raw(frame.width, frame.height, frame.raw).expect("Failed to create image");
     let mut buffer = Cursor::new(Vec::new());
     let output_format = match image_format {
         Jpeg => ImageFormat::Jpeg,
         Png => ImageFormat::Png,
         _ => ImageFormat::Jpeg,
     };
-    image.write_to(&mut buffer, output_format).expect("Failed to save image");
+    image
+        .write_to(&mut buffer, output_format)
+        .expect("Failed to save image");
     talos_core::TalosBus::ScreenCapture(buffer.into_inner());
     println!("screen captured");
 }

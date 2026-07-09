@@ -1,35 +1,44 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use transcribe_rs::onnx::moonshine::StreamingModel;
-use transcribe_rs::onnx::Quantization;
-use transcribe_rs::{SpeechModel, TranscribeOptions};
+use std::sync::atomic::{AtomicBool, Ordering};
 use talos_core::TalosBus;
-use webrtc_vad::*;
+use transcribe_rs::onnx::Quantization;
+use transcribe_rs::onnx::moonshine::StreamingModel;
+use transcribe_rs::{SpeechModel, TranscribeOptions};
 use webrtc_vad::SampleRate::Rate16kHz;
 use webrtc_vad::VadMode::Quality;
+use webrtc_vad::*;
 
-pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<AtomicBool>, stt_enabled: Arc<AtomicBool>) {
+pub fn stt(
+    tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>,
+    speaking: Arc<AtomicBool>,
+    stt_enabled: Arc<AtomicBool>,
+) {
     let mut model = StreamingModel::load(
         &PathBuf::from("models\\moonshine-streaming-medium-onnx"),
         4,
         &Quantization::default(),
-    ).unwrap();
+    )
+    .unwrap();
     let host = cpal::default_host();
-    let device = host.default_input_device().expect("no output device available");
+    let device = host
+        .default_input_device()
+        .expect("no output device available");
     let config = device.default_input_config().unwrap().into();
     let (tx, rx) = std::sync::mpsc::channel::<Vec<f32>>();
-    let stream = device.build_input_stream(
-        config,
-        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            tx.send(data.to_vec()).ok();
-        },
-        move |err| {
-            println!("an error occurred on the input stream: {}", err);
-        },
-        None
-    ).expect("failed to build stream");
+    let stream = device
+        .build_input_stream(
+            config,
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                tx.send(data.to_vec()).ok();
+            },
+            move |err| {
+                println!("an error occurred on the input stream: {}", err);
+            },
+            None,
+        )
+        .expect("failed to build stream");
     stream.play().unwrap();
     let mut audio = Vec::new();
     let mut speech_buffer = Vec::new();
@@ -54,7 +63,10 @@ pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<A
                     chunk_16k.push(chunk[i]);
                 }
                 chunk_16k.resize(480, 0.0);
-                let pcm16: Vec<i16> = chunk_16k.iter().map(|&x| (x * i16::MAX as f32) as i16).collect();
+                let pcm16: Vec<i16> = chunk_16k
+                    .iter()
+                    .map(|&x| (x * i16::MAX as f32) as i16)
+                    .collect();
                 let is_talking = vad.is_voice_segment(&pcm16).unwrap_or(false);
                 if is_talking {
                     speech_buffer.extend(chunk_16k);
@@ -69,7 +81,9 @@ pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<A
                     let result = model.transcribe(&speech_buffer, &TranscribeOptions::default());
                     let result_clone = result.unwrap().text.clone();
                     let transcript = result_clone.clone();
-                    if !result_clone.is_empty() && tx_out.send(TalosBus::VoiceTranscript(transcript)).is_err() {
+                    if !result_clone.is_empty()
+                        && tx_out.send(TalosBus::VoiceTranscript(transcript)).is_err()
+                    {
                         break;
                     }
                     speech_buffer.clear();
@@ -77,5 +91,4 @@ pub fn stt(tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>, speaking: Arc<A
             }
         }
     }
-
 }

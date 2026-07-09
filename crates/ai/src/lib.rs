@@ -1,23 +1,24 @@
-use std::fs;
-use std::io::Write;
-use std::io::Read;
-use std::path::PathBuf;
-use talos_core::TalosBus;
-use serde::{Serialize, Deserialize};
-use gemini_live::{Session, SessionConfig, TransportConfig, Auth, SetupConfig, GenerationConfig, Modality, ReconnectPolicy, ServerEvent};
-use std::time::Duration;
-use std::process::Command;
-use tokio::sync::mpsc;
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
-use ratatui::Frame;
-use tui_prompts::{Prompt, TextPrompt, TextRenderStyle, TextState};
 use crossterm::{
-    event::{self, Event},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
+    event::{self, Event},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
-use tui_prompts::{Status, State};
+use gemini_live::{
+    Auth, GenerationConfig, Modality, ReconnectPolicy, ServerEvent, Session, SessionConfig,
+    SetupConfig, TransportConfig,
+};
+use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use ratatui::{Frame, Terminal, backend::CrosstermBackend};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io::Read;
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::Command;
+use std::time::Duration;
+use talos_core::TalosBus;
+use tokio::sync::mpsc;
+use tui_prompts::{Prompt, State, Status, TextPrompt, TextRenderStyle, TextState};
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthData {
@@ -45,7 +46,9 @@ pub struct AgySession {
 }
 
 impl AgySession {
-    pub fn new(talos_bus_tx: mpsc::UnboundedSender<TalosBus>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        talos_bus_tx: mpsc::UnboundedSender<TalosBus>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
             rows: 30,
@@ -61,7 +64,8 @@ impl AgySession {
 
         std::thread::spawn(move || {
             let mut buffer = [0; 1024];
-            let idle_timeout = Duration::from_millis(800);
+            let first_output_timeout = Duration::from_secs(30);
+            let idle_timeout = Duration::from_secs(2);
             let (output_tx, output_rx) = std::sync::mpsc::channel::<String>();
 
             std::thread::spawn(move || {
@@ -77,6 +81,8 @@ impl AgySession {
             });
 
             while let Some(command) = rx.blocking_recv() {
+                while output_rx.try_recv().is_ok() {}
+
                 let safe_cmd = format!("{}\n", command.trim());
                 if writer.write_all(safe_cmd.as_bytes()).is_err() {
                     break;
@@ -86,26 +92,63 @@ impl AgySession {
                 }
 
                 let mut accumulated_output = String::new();
-                while let Ok(chunk) = output_rx.recv_timeout(idle_timeout) {
-                    accumulated_output.push_str(&chunk);
-                    while let Ok(extra_chunk) = output_rx.try_recv() {
-                        accumulated_output.push_str(&extra_chunk);
+                match output_rx.recv_timeout(first_output_timeout) {
+                    Ok(chunk) => {
+                        accumulated_output.push_str(&chunk);
+                        while let Ok(extra_chunk) = output_rx.recv_timeout(idle_timeout) {
+                            accumulated_output.push_str(&extra_chunk);
+                            while let Ok(ready_chunk) = output_rx.try_recv() {
+                                accumulated_output.push_str(&ready_chunk);
+                            }
+                        }
                     }
+                    Err(_) => {
+                        let timeout_msg = format!("AGY command timeout or no output: '{}'", command.trim());
+                        let _ = talos_bus_tx.send(TalosBus::TerminalOutput(timeout_msg));
+                        continue;
+                    }
+                }
+
+                while let Ok(extra_chunk) = output_rx.try_recv() {
+                    accumulated_output.push_str(&extra_chunk);
                 }
                 let stripped = strip_ansi_escapes::strip(&accumulated_output.as_bytes());
                 let text = String::from_utf8_lossy(&stripped);
-                let clean_output = text.lines()
+                let clean_output = text
+                    .lines()
                     .map(str::trim)
                     .filter(|line| !line.is_empty())
                     .filter(|line| *line != command.trim())
                     .filter(|line| !line.starts_with("agy>"))
-                    .filter(|line| !line.contains("Loading"))
-                    .filter(|line| !line.contains("loading"))
-                    .filter(|line| !line.chars().all(|c| matches!(c, '⠋' | '⠙' | '⠹' | '⠸' | '⠼' | '⠴' | '⠦' | '⠧' | '⠇' | '⠏' | '-' | '\\' | '|' | '/' | ' ')))
+                    .filter(|line| !line.starts_with("Choose") && !line.ends_with("model:"))
+                    .filter(|line| !line.contains("Gemini") && !line.contains("gemini"))
+                    .filter(|line| !line.contains("(High)") && !line.contains("(Low)") && !line.contains("(Default)"))
+                    .filter(|line| {
+                        !line.chars().all(|c| {
+                            matches!(
+                                c,
+                                '⠋' | '⠙'
+                                    | '⠹'
+                                    | '⠸'
+                                    | '⠼'
+                                    | '⠴'
+                                    | '⠦'
+                                    | '⠧'
+                                    | '⠇'
+                                    | '⠏'
+                                    | '-'
+                                    | '\\'
+                                    | '|'
+                                    | '/'
+                                    | ' '
+                            )
+                        })
+                    })
                     .collect::<Vec<_>>()
                     .join("\n");
                 if !clean_output.is_empty() {
-                    let _ = talos_bus_tx.send(TalosBus::TerminalOutput(clean_output));
+                    let formatted_output = format!("AI: {}", clean_output);
+                    let _ = talos_bus_tx.send(TalosBus::TerminalOutput(formatted_output));
                 }
             }
             let _ = child.kill();
@@ -130,10 +173,18 @@ impl Iterator for StreamingSource {
 }
 
 impl rodio::Source for StreamingSource {
-    fn current_span_len(&self) -> Option<usize> { None }
-    fn channels(&self) -> std::num::NonZeroU16 { std::num::NonZeroU16::new(1).unwrap() }
-    fn sample_rate(&self) -> std::num::NonZeroU32 { std::num::NonZeroU32::new(24000).unwrap() }
-    fn total_duration(&self) -> Option<Duration> { None }
+    fn current_span_len(&self) -> Option<usize> {
+        None
+    }
+    fn channels(&self) -> std::num::NonZeroU16 {
+        std::num::NonZeroU16::new(1).unwrap()
+    }
+    fn sample_rate(&self) -> std::num::NonZeroU32 {
+        std::num::NonZeroU32::new(24000).unwrap()
+    }
+    fn total_duration(&self) -> Option<Duration> {
+        None
+    }
 }
 
 pub async fn auth(path: &PathBuf) {
@@ -148,21 +199,21 @@ pub async fn auth(path: &PathBuf) {
     let api_key = loop {
         terminal.draw(|f| app.draw_ui(f)).unwrap();
         if let Event::Key(key) = event::read().unwrap() {
-            // Feed the key to the prompt
             app.apikey_state.handle_key_event(key);
 
-            // Check if they hit Enter (Done) or Esc (Aborted)
             if app.apikey_state.status() == Status::Done {
                 break app.apikey_state.value().to_string();
             } else if app.apikey_state.status() == Status::Aborted {
-                break String::new(); // Fallback if they cancel
+                break String::new();
             }
         }
     };
     disable_raw_mode().unwrap();
     std::io::stdout().execute(LeaveAlternateScreen).unwrap();
     if !api_key.is_empty() {
-        let auth_data = AuthData { data: api_key.trim().to_string() };
+        let auth_data = AuthData {
+            data: api_key.trim().to_string(),
+        };
         let json = serde_json::to_string(&auth_data).unwrap();
         fs::write(path.join("user_api.info"), json).unwrap();
     }
@@ -173,15 +224,19 @@ pub async fn get_auth(path: &PathBuf) -> AuthData {
     serde_json::from_str(&json).unwrap()
 }
 
-pub async fn gemini_communicate_speech(mut session: Session, mut rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosBus>, _tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = rodio::DeviceSinkBuilder::open_default_sink()
-        .expect("open default audio stream");
+pub async fn gemini_communicate_speech(
+    mut session: Session,
+    mut rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosBus>,
+    tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
     let player = rodio::Player::connect_new(&handle.mixer());
     let (tx_audio, rx_audio) = std::sync::mpsc::channel::<f32>();
     let stream_source = StreamingSource { receiver: rx_audio };
     player.append(stream_source);
     player.play();
     let mut audio_buffer: Vec<u8> = Vec::new();
+    let agy_session = AgySession::new(tx_in.clone())?;
     loop {
         let mut speech = String::new();
         match rx_out.recv().await {
@@ -200,8 +255,9 @@ pub async fn gemini_communicate_speech(mut session: Session, mut rx_out: tokio::
                     let processed = input_speech.trim().to_string();
                     if !processed.is_empty() {
                         if !speech.is_empty() {
-                            speech.push_str(&" ".to_string());
+                            speech.push(' ');
                         }
+                        speech.push_str(&processed);
                     }
                 }
                 Ok(Some(_)) => continue,
@@ -213,13 +269,11 @@ pub async fn gemini_communicate_speech(mut session: Session, mut rx_out: tokio::
             continue;
         }
         session.send_text(&speech).await?;
-        println!("User: {}", speech);
-        let _ = _tx_in.send(TalosBus::TerminalOutput(format!("You: {}", speech)));
+        let _ = tx_in.send(TalosBus::TerminalOutput(format!("You: {}", speech)));
         let mut gemini_response = String::new();
         while let Some(event) = session.next_event().await {
             match event {
                 ServerEvent::ModelAudio(audio) => {
-                    print!("{:?}", audio.len());
                     audio_buffer.extend_from_slice(&audio);
                     let valid_len = audio_buffer.len() - (audio_buffer.len() % 2);
                     for chunk in audio_buffer[..valid_len].chunks_exact(2) {
@@ -229,13 +283,18 @@ pub async fn gemini_communicate_speech(mut session: Session, mut rx_out: tokio::
                     audio_buffer.drain(..valid_len);
                 }
                 ServerEvent::ModelText(text) => {
-                    print!("{text}");
                     gemini_response.push_str(&text);
+                    let _ = tx_in.send(TalosBus::AiResponse(text));
                 }
                 ServerEvent::TurnComplete => {
-                    println!("\n--- turn done ---");
-                    println!("Gemini: {}", gemini_response);
-                    let _ = _tx_in.send(TalosBus::TerminalOutput(format!("AI: {}", gemini_response)));
+                    // Send final consolidated response to terminal
+                    let final_msg = format!("AI: {}", gemini_response);
+                    let _ =
+                        tx_in.send(TalosBus::TerminalOutput(final_msg));
+                    if !gemini_response.trim().is_empty() {
+                        agy_session.execute(&gemini_response);
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
                     break;
                 }
                 _ => {}
@@ -245,27 +304,22 @@ pub async fn gemini_communicate_speech(mut session: Session, mut rx_out: tokio::
     Ok(())
 }
 
-pub async fn gemini_api(api_key: &str, rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosBus>, _tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
-    let ai_management_prompt = r#"You are Talos, an advanced, voice-operated Developer Assistant. You have direct, real-time access to the user's host operating system and terminal. Your goal is to help the user navigate their computer, write code, manage files, and automate GUI tasks completely hands-free.
+pub async fn gemini_api(
+    api_key: &str,
+    rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosBus>,
+    tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let ai_management_prompt = r#"You are Talos, an advanced, voice-operated Developer Assistant. You have direct, real-time access to the user's host operating system and terminal through an AGY CLI bridge.
 
-Your Capabilities (Tools)
-You have two primary domains of control via your tools:
-
-    OS Control (Mouse & Keyboard): You can move the mouse, click (mouse_click), type text (type_text), press special keys (press_key), and scroll (scroll).
-
-    Terminal Control (AGY CLI): You can execute terminal commands, manage files, and write code using the run_agy_cli tool.
+When the user asks you to inspect files, write code, run commands, or manage the local project, respond with the exact instruction you want AGY to execute. Do not claim you ran a command yourself; the host app forwards your completed response to AGY and displays the result.
 
 Operational Directives & Safety Rules
 
-    Think Before You Act: Before executing any tool, briefly state what you are about to do out loud so the user is aware. (e.g., "I'm going to open the terminal and list your files now.")
+    Prefer the CLI for Data: If the user asks for information about their system (e.g., "What's in this folder?", "Read this code file"), issue a concise AGY instruction for the CLI rather than describing GUI steps.
 
-    Prefer the CLI for Data: If the user asks for information about their system (e.g., "What's in this folder?", "Read this code file"), always use run_agy_cli rather than trying to use the mouse and keyboard to open a GUI app.
+    Chain Actions Logically: You can request multiple terminal/file actions in one instruction when they belong together.
 
-    Chain Actions Logically: You can use multiple tools in sequence. For example, if asked to write a script and run it, use the CLI to create the file, write the code, and execute it in one fluid process.
-
-    Spatial Awareness: You do not inherently know where UI elements are on the screen unless the user provides exact X/Y coordinates. If a user asks you to click something but hasn't provided coordinates (and you haven't received a screen capture yet), ask them for the coordinates or suggest a keyboard shortcut alternative.
-
-    Destructive Actions: If a user asks you to delete files, format drives, or run potentially dangerous commands via the CLI, you must ask for verbal confirmation before proceeding."#;
+    Destructive Actions: If a user asks you to delete files, format drives, or run potentially dangerous commands, ask for confirmation before issuing the AGY instruction."#;
 
     let session = Session::connect(SessionConfig {
         transport: TransportConfig {
@@ -282,14 +336,15 @@ Operational Directives & Safety Rules
                 role: Some("system".to_string()),
             }),
             generation_config: Some(GenerationConfig {
-                response_modalities: Some(vec![Modality::Audio]),
+                response_modalities: Some(vec![Modality::Audio, Modality::Text]),
                 ..Default::default()
             }),
             ..Default::default()
         },
         reconnect: ReconnectPolicy::default(),
-    }).await?;
-    gemini_communicate_speech(session, rx_out, _tx_in).await?;
+    })
+    .await?;
+    gemini_communicate_speech(session, rx_out, tx_in).await?;
     Ok(())
 }
 
@@ -301,7 +356,10 @@ pub async fn agy_setup(path: PathBuf) {
             .expect("failed to execute process");
     } else if cfg!(any(target_os = "linux", target_os = "macos")) {
         let _ = Command::new("sh")
-            .args(["-c", "curl -fsSL https://antigravity.google/cli/install.sh | bash && agy"])
+            .args([
+                "-c",
+                "curl -fsSL https://antigravity.google/cli/install.sh | bash && agy",
+            ])
             .status()
             .expect("failed to execute process");
     } else {
@@ -310,8 +368,11 @@ pub async fn agy_setup(path: PathBuf) {
     println!("Path successfully found at {:?}", path);
 }
 
-pub async fn agy_communicate(new_chat: bool, talos_bus_tx: mpsc::UnboundedSender<TalosBus>, input: &str) -> Result<(), Box<dyn std::error::Error>>  {
-    println!("Command Start");
+pub async fn agy_communicate(
+    new_chat: bool,
+    talos_bus_tx: mpsc::UnboundedSender<TalosBus>,
+    input: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = if cfg!(target_os = "windows") {
         let mut c = Command::new("cmd");
         c.args(&["/C", "agy"]);
@@ -319,16 +380,35 @@ pub async fn agy_communicate(new_chat: bool, talos_bus_tx: mpsc::UnboundedSender
     } else {
         Command::new("agy")
     };
+    
     if new_chat {
         cmd.args(["-p", input.trim()]);
     } else {
         cmd.args(["-c", "-p", input.trim()]);
     }
-    let agy_output = cmd.output()?;
-    let text = String::from_utf8(agy_output.stdout)?.to_string();
-    if !text.is_empty() {
-        talos_bus_tx.send(TalosBus::TerminalOutput(text))?;
+    
+    match cmd.output() {
+        Ok(agy_output) => {
+            let mut text = String::from_utf8(agy_output.stdout).unwrap_or_default();
+            let stderr = String::from_utf8(agy_output.stderr).unwrap_or_default();
+            
+            if !stderr.trim().is_empty() {
+                if !text.trim().is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(&stderr);
+            }
+            
+            if !text.is_empty() {
+                let cleaned = text.trim().to_string();
+                let formatted = format!("AI: {}", cleaned);
+                let _ = talos_bus_tx.send(TalosBus::TerminalOutput(formatted));
+            }
+        }
+        Err(e) => {
+            let _ = talos_bus_tx.send(TalosBus::TerminalOutput(format!("AI: Error - {}", e)));
+        }
     }
-    println!("PTY End");
+    
     Ok(())
 }
