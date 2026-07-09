@@ -1,12 +1,12 @@
 use std::fs;
 use std::io::Write;
+use std::io::Read;
 use std::path::PathBuf;
 use talos_core::TalosBus;
 use serde::{Serialize, Deserialize};
 use gemini_live::{Session, SessionConfig, TransportConfig, Auth, SetupConfig, GenerationConfig, Modality, ReconnectPolicy, ServerEvent};
 use std::time::Duration;
 use std::process::Command;
-use tokio::io::{self, AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use ratatui::Frame;
@@ -48,61 +48,64 @@ impl AgySession {
     pub fn new(talos_bus_tx: mpsc::UnboundedSender<TalosBus>) -> Result<Self, Box<dyn std::error::Error>> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
-            rows: 24,
-            cols: 80,
+            rows: 30,
+            cols: 120,
             pixel_width: 0,
             pixel_height: 0,
         })?;
-        let cmd = if cfg!(target_os = "windows") {
-            CommandBuilder::new("cmd")
-        } else {
-            CommandBuilder::new("bash")
-        };
-        let mut child = pair.slave.spawn_command(cmd)?;
-        drop(pair.slave);
-        let mut reader = pair.master.try_clone_reader()?;
+        let mut child = pair.slave.spawn_command(CommandBuilder::new("agy"))?;
         let mut writer = pair.master.take_writer()?;
-        if cfg!(target_os = "windows") {
-            writer.write_all(b"@echo off\nprompt $g\n")?;
-        } else {
-            writer.write_all(b"stty -echo; export PS1=\"\"; export PROMPT_COMMAND=\"\"\n")?;
-        }
+        let mut reader = pair.master.try_clone_reader()?;
+
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+
         std::thread::spawn(move || {
             let mut buffer = [0; 1024];
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            while let Ok(bytes) = reader.read(&mut buffer) {
-                if bytes < buffer.len() { break; }
-            }
-            while let Some(command) = rx.blocking_recv() {
-                let start_signal = "__START__";
-                let end_signal = "__TALOS_CMD_COMPLETE__";
-                let safe_cmd = command.trim().replace("\"", "\\\"");
-                let agy_command = format!("agy -p \"{}\"", safe_cmd);
-                let full_input = format!("echo {}& {} & echo {}\n", start_signal, agy_command, end_signal);
+            let idle_timeout = Duration::from_millis(800);
+            let (output_tx, output_rx) = std::sync::mpsc::channel::<String>();
 
-                if writer.write_all(full_input.as_bytes()).is_err() {
-                    break;
-                }
-                let mut accumulated_output = String::new();
+            std::thread::spawn(move || {
                 while let Ok(bytes_read) = reader.read(&mut buffer) {
-                    if bytes_read == 0 { break; }
-
-                    let chunk = String::from_utf8_lossy(&buffer[..bytes_read]);
-                    accumulated_output.push_str(&chunk);
-                    if accumulated_output.contains(&format!("\n{}", end_signal)) {
-                        let clean_output = accumulated_output
-                            .split(start_signal)
-                            .last()
-                            .unwrap_or("")
-                            .split(end_signal)
-                            .next()
-                            .unwrap_or("")
-                            .trim()
-                            .to_string();
-                        let _ = talos_bus_tx.send(TalosBus::TerminalOutput(clean_output));
+                    if bytes_read == 0 {
                         break;
                     }
+                    let chunk = String::from_utf8_lossy(&buffer[..bytes_read]).to_string();
+                    if output_tx.send(chunk).is_err() {
+                        break;
+                    }
+                }
+            });
+
+            while let Some(command) = rx.blocking_recv() {
+                let safe_cmd = format!("{}\n", command.trim());
+                if writer.write_all(safe_cmd.as_bytes()).is_err() {
+                    break;
+                }
+                if writer.flush().is_err() {
+                    break;
+                }
+
+                let mut accumulated_output = String::new();
+                while let Ok(chunk) = output_rx.recv_timeout(idle_timeout) {
+                    accumulated_output.push_str(&chunk);
+                    while let Ok(extra_chunk) = output_rx.try_recv() {
+                        accumulated_output.push_str(&extra_chunk);
+                    }
+                }
+                let stripped = strip_ansi_escapes::strip(&accumulated_output.as_bytes());
+                let text = String::from_utf8_lossy(&stripped);
+                let clean_output = text.lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .filter(|line| *line != command.trim())
+                    .filter(|line| !line.starts_with("agy>"))
+                    .filter(|line| !line.contains("Loading"))
+                    .filter(|line| !line.contains("loading"))
+                    .filter(|line| !line.chars().all(|c| matches!(c, '⠋' | '⠙' | '⠹' | '⠸' | '⠼' | '⠴' | '⠦' | '⠧' | '⠇' | '⠏' | '-' | '\\' | '|' | '/' | ' ')))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !clean_output.is_empty() {
+                    let _ = talos_bus_tx.send(TalosBus::TerminalOutput(clean_output));
                 }
             }
             let _ = child.kill();
@@ -110,6 +113,7 @@ impl AgySession {
 
         Ok(Self { tx })
     }
+
     pub fn execute(&self, command: &str) {
         self.tx.send(command.to_string()).ok();
     }
