@@ -178,11 +178,11 @@ pub async fn dashboard(
                 "__PROCESSING_START__" => {
                     processing = true;
                     spinner.reset();
-                    break; // force at least one draw with processing=true
+                    break;
                 }
                 "__PROCESSING_END__" => {
                     processing = false;
-                    break; // force a draw reflecting the stop too
+                    break;
                 }
                 other => chat_history.push(other.to_string()),
             }

@@ -5,7 +5,9 @@ use std::{thread, vec};
 use talos_ai::{auth, gemini_api, get_auth};
 use talos_audio::stt;
 use talos_core::TalosBus;
+use talos_executor::McpServer;
 use talos_ui::{dashboard, select_menu};
+use mcpkit_axum::McpRouter;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -30,11 +32,12 @@ async fn main() {
     let (tx_in, mut rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
     let tx_out_stt = tx_out.clone();
     let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    tokio::spawn(
+        talos_executor::start_mcpserver()
+    );
     tokio::spawn(async move {
         dashboard(stt_enabled, ui_rx).await;
     });
-
-    // Always spawn the STT thread, let the mute button control it internally!
     thread::spawn(move || {
         stt(tx_out_stt, speaking_clone, stt_enabled_clone);
     });

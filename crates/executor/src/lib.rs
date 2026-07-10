@@ -1,13 +1,11 @@
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use image::ImageFormat::{Jpeg, Png};
-use rust_mcp_sdk::schema::{ServerCapabilities, Tool};
 use serde_json::{Value, json};
 use std::io::Cursor;
 use xcap::image::{ImageFormat, RgbaImage};
 use xcap::{Frame, Monitor};
-use rust_mcp_axum::{create_axum_server, AxumServerOptions};
-use rust_mcp_sdk::server::{ServerInfo, ServerCapabilities};
-use executor::McpControl;
+use mcpkit::prelude::*;
+use mcpkit_axum::prelude::*;
 
 pub struct MouseMovement {
     pub x: i32,
@@ -18,78 +16,17 @@ pub struct KeyboardInput {
     pub text: String,
 }
 
-pub struct McpControl;
+pub struct McpServer;
 
-impl McpControl {
-    pub fn handle_tool_execution(tool_name: &str, arguments: &Value) -> Result<String, String> {
-        match tool_name {
-            "mouse_click" => Self::execute_mouse_click(arguments),
-            "type_text" => Self::execute_type_text(arguments),
-            "press_key" => Self::execute_press_key(arguments),
-            "scroll" => Self::execute_scroll(arguments),
-            _ => Err(format!("Unknown tool requested: {}", tool_name)),
-        }
+impl McpServer {
+    pub fn new() -> Self {
+        Self
     }
 
-    fn execute_mouse_click(args: &Value) -> Result<String, String> {
-        let x = args
-            .get("x")
-            .and_then(|v| v.as_i64())
-            .ok_or("Missing or invalid 'x' coordinate")? as i32;
-        let y = args
-            .get("y")
-            .and_then(|v| v.as_i64())
-            .ok_or("Missing or invalid 'y' coordinate")? as i32;
-        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo
-            .move_mouse(x, y, Coordinate::Abs)
-            .map_err(|e| e.to_string())?;
-        enigo
-            .button(Button::Left, Direction::Click)
-            .map_err(|e| e.to_string())?;
-        Ok(format!(
-            "Successfully clicked at coordinates ({}, {})",
-            x, y
-        ))
+    pub fn get_enigo() -> Result<Enigo, String> {
+        Enigo::new(&Settings::default()).map_err(|e| e.to_string())
     }
-
-    fn execute_type_text(args: &Value) -> Result<String, String> {
-        let text = args
-            .get("text")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing or invalid 'text' argument")?;
-        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo.text(text).map_err(|e| e.to_string())?;
-        Ok(format!("Successfully typed the requested text."))
-    }
-    fn execute_press_key(args: &Value) -> Result<String, String> {
-        let key_str = args
-            .get("key")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing or invalid 'key' argument")?;
-        let key = Self::parse_key_string(key_str)
-            .ok_or_else(|| format!("Unsupported key: {}", key_str))?;
-
-        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo
-            .key(key, Direction::Click)
-            .map_err(|e| e.to_string())?;
-        Ok(format!("Successfully pressed the '{}' key.", key_str))
-    }
-
-    fn execute_scroll(args: &Value) -> Result<String, String> {
-        let lines = args
-            .get("lines")
-            .and_then(|v| v.as_i64())
-            .ok_or("Missing or invalid 'lines' argument")? as i32;
-        let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-        enigo
-            .scroll(lines, Axis::Vertical)
-            .map_err(|e| e.to_string())?;
-        Ok(format!("Successfully scrolled {} lines.", lines))
-    }
-
-    fn parse_key_string(key_str: &str) -> Option<Key> {
+    pub async fn parse_key_string(key_str: &str) -> Option<Key> {
         match key_str.to_lowercase().as_str() {
             "enter" | "return" => Some(Key::Return),
             "tab" => Some(Key::Tab),
@@ -106,12 +43,73 @@ impl McpControl {
             "super" | "win" | "cmd" => Some(Key::Meta),
             other => {
                 if other.chars().count() == 1 {
-                    // `Key::Layout` is gone, use `Key::Unicode` for characters
                     Some(Key::Unicode(other.chars().next().unwrap()))
                 } else {
                     None
                 }
             }
+        }
+    }
+}
+
+#[mcp_server(name = "talos-executor", version = "0.1.0")]
+impl McpServer {
+    #[tool(description = "Move the cursor to a specific coordinate on the screen.")]
+    pub async fn cursor_move(&self, x: i32, y: i32) -> ToolOutput {
+        let mut enigo = Self::get_enigo().unwrap();
+        enigo.move_mouse(x, y, Coordinate::Abs).unwrap();
+        ToolOutput::text(format!("Moved cursor to X: {} Y: {} on screen", x, y))
+    }
+    #[tool(description = "Click left, right, or middle mouse button.")]
+    pub async fn mouse_click(&self, button: i32) -> ToolOutput {
+        let mut enigo = Self::get_enigo().unwrap();
+        let mut clicked_button = String::new();
+        if button == 1 {
+            enigo.button(Button::Left, Direction::Click).unwrap();
+            clicked_button = "Left Button".to_string();
+        } else if button == 2 {
+            enigo.button(Button::Right, Direction::Click).unwrap();
+            clicked_button = "Right Button".to_string();
+        } else if button == 3 {
+            enigo.button(Button::Middle, Direction::Click).unwrap();
+            clicked_button = "Middle Button".to_string();
+        }
+        ToolOutput::text(format!("Clicked button: {} successfully", clicked_button))
+    }
+    #[tool(description = "Scroll the mouse wheel a certain amount of line.")]
+    pub async fn mouse_scroll(&self, lines: i32) -> ToolOutput {
+        let mut enigo = Self::get_enigo().unwrap();
+        enigo.scroll(lines, Axis::Vertical).unwrap();
+        ToolOutput::text(format!("Scrolled the mouse wheel {} successfully.", lines))
+    }
+    #[tool(description = "Press any key on the keyboard.")]
+    pub async fn key_press(&self, key: String) -> ToolOutput {
+        let mut enigo = Self::get_enigo().unwrap();
+        let parsed_key = Self::parse_key_string(&key).await.unwrap();
+        enigo.key(parsed_key, Direction::Click).unwrap();
+        ToolOutput::text(format!("Pressed key: {} successfully.", key))
+    }
+    #[tool(description = "Type a string of keys.")]
+    pub async fn key_type(&self, text: String) -> ToolOutput {
+        let mut enigo = Self::get_enigo().unwrap();
+        enigo.text(&text).unwrap();
+        ToolOutput::text(format!("Typed text: {} successfully.", text))
+    }
+    #[resource(
+        uri_pattern = "talos://placeholder",
+        name = "PlaceHolder",
+        description = "Placeholder resource (server exposes no real resources)",
+        mime_type = "text/plain"
+    )]
+    pub async fn placeholder_resource(&self, uri: &str) -> ResourceContents {
+        ResourceContents::text(uri, "")
+    }
+
+    #[prompt(description = "Placeholder prompt (server exposes no real prompts)")]
+    pub async fn placeholder_prompt(&self) -> GetPromptResult {
+        GetPromptResult {
+            description: None,
+            messages: vec![],
         }
     }
 }
@@ -150,96 +148,6 @@ pub async fn encode(frame: Frame, image_format: ImageFormat) {
     println!("screen captured");
 }
 
-pub async fn available_tools() -> Result<Vec<Tool>, rust_mcp_sdk::GenericSendError> {
-    let tools = vec![
-        Tool {
-            name: "mouse_click".to_string(),
-            description: Some("Move the cursor to a specific coordinate and left click.".to_string()),
-            input_schema: serde_json::from_value(json!({
-                "type": "object",
-                "properties": {
-                    "x": { "type": "integer", "description": "X coordinate on the screen" },
-                    "y": { "type": "integer", "description": "Y coordinate on the screen" }
-                },
-                "required": ["x", "y"]
-            })).unwrap(),
-            annotations: None,
-            execution: None,
-            icons: vec![],
-            meta: None,
-            title: None,
-            output_schema: None,
-        },
-        Tool {
-            name: "type_text".to_string(),
-            description: Some("Type a string of text using the keyboard.".to_string()),
-            input_schema: serde_json::from_value(json!({
-                "type": "object",
-                "properties": {
-                    "text": { "type": "string", "description": "The exact text to type" }
-                },
-                "required": ["text"]
-            })).unwrap(),
-            annotations: None,
-            execution: None,
-            icons: vec![],
-            meta: None,
-            title: None,
-            output_schema: None,
-        },
-        Tool {
-            name: "press_key".to_string(),
-            description: Some("Press a specific special key (e.g., 'enter', 'tab', 'escape').".to_string()),
-            input_schema: serde_json::from_value(json!({
-                "type": "object",
-                "properties": {
-                    "key": { "type": "string", "description": "The name of the key to press" }
-                },
-                "required": ["key"]
-            })).unwrap(),
-            annotations: None,
-            execution: None,
-            icons: vec![],
-            meta: None,
-            title: None,
-            output_schema: None,
-        },
-        Tool {
-            name: "scroll".to_string(),
-            description: Some("Scroll the mouse wheel.".to_string()),
-            input_schema: serde_json::from_value(json!({
-                "type": "object",
-                "properties": {
-                    "lines": { "type": "integer", "description": "Positive to scroll down, negative to scroll up" }
-                },
-                    "required": ["lines"]
-                })).unwrap(),
-            annotations: None,
-            execution: None,
-            icons: vec![],
-            meta: None,
-            title: None,
-            output_schema: None,
-        }
-    ];
-    Ok(tools)
-}
-
-pub async fn create_mcpserver() {
-    tokio::spawn(async move {
-        let server_info = ServerInfo {
-            name: "talos-mcpserver".to_string(),
-            version: "0.1.0".to_string(),
-        };
-        let axum_server = create_axum_server(
-            server_info,
-            ServerCapabilities { tools: Some(true), ..Default::default() },
-            AxumServerOptions {
-                host: "0.0.0.0".to_string(),
-                port: 3000,
-                ..Default::default()
-            }
-        );
-        axum_server.start().await.unwrap();
-    })
+pub async fn start_mcpserver() -> std::io::Result<()> {
+    McpRouter::new(McpServer::new()).serve("0.0.0.0:3333").await
 }

@@ -3,7 +3,6 @@ use crossterm::{
     event::{self, Event},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use executor::McpControl;
 use gemini_live::{
     Auth, GenerationConfig, Modality, ReconnectPolicy, ServerEvent, Session, SessionConfig,
     SetupConfig, TransportConfig,
@@ -25,21 +24,6 @@ use tui_prompts::{Prompt, State, Status, TextPrompt, TextRenderStyle, TextState}
 #[derive(Serialize, Deserialize)]
 pub struct AuthData {
     pub data: String,
-}
-
-pub struct McpClient;
-
-impl McpClient {
-    pub async fn execute_tool(tool_name: &str, arguments: &Value) -> Result<String, String> {
-        McpControl::handle_tool_execution(tool_name, arguments)
-    }
-
-    pub async fn get_available_tools() -> Result<Vec<String>, String> {
-        executor::available_tools()
-            .await
-            .map(|tools| tools.iter().map(|t| t.name.clone()).collect())
-            .map_err(|e| e.to_string())
-    }
 }
 
 pub struct StreamingSource {
