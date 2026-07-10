@@ -1,10 +1,13 @@
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use image::ImageFormat::{Jpeg, Png};
-use rust_mcp_sdk::schema::Tool;
+use rust_mcp_sdk::schema::{ServerCapabilities, Tool};
 use serde_json::{Value, json};
 use std::io::Cursor;
 use xcap::image::{ImageFormat, RgbaImage};
 use xcap::{Frame, Monitor};
+use rust_mcp_axum::{create_axum_server, AxumServerOptions};
+use rust_mcp_sdk::server::{ServerInfo, ServerCapabilities};
+use executor::McpControl;
 
 pub struct MouseMovement {
     pub x: i32,
@@ -100,7 +103,7 @@ impl McpControl {
             "shift" => Some(Key::Shift),
             "control" | "ctrl" => Some(Key::Control),
             "alt" => Some(Key::Alt),
-            "super" | "win" | "cmd" => Some(Key::Meta), // Super/Win are now grouped under Meta
+            "super" | "win" | "cmd" => Some(Key::Meta),
             other => {
                 if other.chars().count() == 1 {
                     // `Key::Layout` is gone, use `Key::Unicode` for characters
@@ -220,4 +223,23 @@ pub async fn available_tools() -> Result<Vec<Tool>, rust_mcp_sdk::GenericSendErr
         }
     ];
     Ok(tools)
+}
+
+pub async fn create_mcpserver() {
+    tokio::spawn(async move {
+        let server_info = ServerInfo {
+            name: "talos-mcpserver".to_string(),
+            version: "0.1.0".to_string(),
+        };
+        let axum_server = create_axum_server(
+            server_info,
+            ServerCapabilities { tools: Some(true), ..Default::default() },
+            AxumServerOptions {
+                host: "0.0.0.0".to_string(),
+                port: 3000,
+                ..Default::default()
+            }
+        );
+        axum_server.start().await.unwrap();
+    })
 }

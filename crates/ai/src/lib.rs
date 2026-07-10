@@ -3,6 +3,7 @@ use crossterm::{
     event::{self, Event},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use executor::McpControl;
 use gemini_live::{
     Auth, GenerationConfig, Modality, ReconnectPolicy, ServerEvent, Session, SessionConfig,
     SetupConfig, TransportConfig,
@@ -10,6 +11,7 @@ use gemini_live::{
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use ratatui::{Frame, Terminal, backend::CrosstermBackend};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fs;
 use std::io::Read;
 use std::io::Write;
@@ -23,6 +25,21 @@ use tui_prompts::{Prompt, State, Status, TextPrompt, TextRenderStyle, TextState}
 #[derive(Serialize, Deserialize)]
 pub struct AuthData {
     pub data: String,
+}
+
+pub struct McpClient;
+
+impl McpClient {
+    pub async fn execute_tool(tool_name: &str, arguments: &Value) -> Result<String, String> {
+        McpControl::handle_tool_execution(tool_name, arguments)
+    }
+
+    pub async fn get_available_tools() -> Result<Vec<String>, String> {
+        executor::available_tools()
+            .await
+            .map(|tools| tools.iter().map(|t| t.name.clone()).collect())
+            .map_err(|e| e.to_string())
+    }
 }
 
 pub struct StreamingSource {
@@ -92,26 +109,32 @@ impl AgySession {
                 }
 
                 let mut accumulated_output = String::new();
-                match output_rx.recv_timeout(first_output_timeout) {
-                    Ok(chunk) => {
-                        accumulated_output.push_str(&chunk);
-                        while let Ok(extra_chunk) = output_rx.recv_timeout(idle_timeout) {
-                            accumulated_output.push_str(&extra_chunk);
-                            while let Ok(ready_chunk) = output_rx.try_recv() {
-                                accumulated_output.push_str(&ready_chunk);
+                let start_time = std::time::Instant::now();
+                let mut last_chunk_time = start_time;
+                let mut got_first_chunk = false;
+                let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_START__".to_string()));
+
+                loop {
+                    match output_rx.try_recv() {
+                        Ok(chunk) => {
+                            accumulated_output.push_str(&chunk);
+                            last_chunk_time = std::time::Instant::now();
+                            got_first_chunk = true;
+                        }
+                        Err(_) => {
+                            if !got_first_chunk && start_time.elapsed() > first_output_timeout {
+                                let timeout_msg = format!("AGY command timeout or no output: '{}'", command.trim());
+                                let _ = talos_bus_tx.send(TalosBus::TerminalOutput(timeout_msg));
+                                break;
                             }
+                            if got_first_chunk && last_chunk_time.elapsed() > idle_timeout {
+                                break;
+                            }
+                            std::thread::sleep(Duration::from_millis(50));
                         }
                     }
-                    Err(_) => {
-                        let timeout_msg = format!("AGY command timeout or no output: '{}'", command.trim());
-                        let _ = talos_bus_tx.send(TalosBus::TerminalOutput(timeout_msg));
-                        continue;
-                    }
                 }
-
-                while let Ok(extra_chunk) = output_rx.try_recv() {
-                    accumulated_output.push_str(&extra_chunk);
-                }
+                let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_END__".to_string()));
                 let stripped = strip_ansi_escapes::strip(&accumulated_output.as_bytes());
                 let text = String::from_utf8_lossy(&stripped);
                 let clean_output = text

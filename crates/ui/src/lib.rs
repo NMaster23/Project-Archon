@@ -7,7 +7,49 @@ use ratatui::{prelude::*, widgets::*};
 use std::io::stdout;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
+
+const DEFAULT_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+pub struct Spinner {
+    frames: &'static [&'static str],
+    index: usize,
+    last_tick: Instant,
+    tick_rate: Duration,
+}
+
+impl Spinner {
+    pub fn new(tick_rate_ms: u64) -> Self {
+        Self {
+            frames: DEFAULT_FRAMES,
+            index: 0,
+            last_tick: Instant::now(),
+            tick_rate: Duration::from_millis(tick_rate_ms),
+        }
+    }
+    pub fn with_custom_frames(tick_rate_ms: u64, frames: &'static [&'static str]) -> Self {
+        Self {
+            frames,
+            index: 0,
+            last_tick: Instant::now(),
+            tick_rate: Duration::from_millis(tick_rate_ms),
+        }
+    }
+    pub fn update(&mut self) {
+        if self.last_tick.elapsed() >= self.tick_rate {
+            self.index = (self.index + 1) % self.frames.len();
+            self.last_tick = Instant::now();
+        }
+    }
+    pub fn frame(&self) -> &str {
+        self.frames[self.index]
+    }
+    pub fn reset(&mut self) {
+        self.index = 0;
+        self.last_tick = Instant::now();
+    }
+}
 
 pub async fn select_menu(options: Vec<&str>) -> usize {
     enable_raw_mode().unwrap();
@@ -82,7 +124,9 @@ pub async fn dashboard(
     stdout().execute(EnterAlternateScreen).unwrap();
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).unwrap();
     let mut chat_history: Vec<String> = Vec::new();
-    loop {
+    let mut spinner = Spinner::new(100);
+    let mut processing = false;
+    loop { spinner.update();
         terminal
             .draw(|f| {
                 let stt_status_text = if stt_enabled.load(Ordering::Relaxed) {
@@ -94,7 +138,8 @@ pub async fn dashboard(
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(3), Constraint::Min(3)])
                     .split(f.area());
-                let stt_show_text = Paragraph::new(stt_status_text)
+                let display_status_text = if processing { format!("{} {}", spinner.frame(), stt_status_text) } else { stt_status_text.to_string() };
+                let stt_show_text = Paragraph::new(display_status_text)
                     .style(if stt_enabled.load(Ordering::Relaxed) {
                         Style::default().fg(Color::Red)
                     } else {
@@ -129,8 +174,20 @@ pub async fn dashboard(
             }
         }
         while let Ok(message) = rx_out.try_recv() {
-            chat_history.push(message);
+            match message.as_str() {
+                "__PROCESSING_START__" => {
+                    processing = true;
+                    spinner.reset();
+                    break; // force at least one draw with processing=true
+                }
+                "__PROCESSING_END__" => {
+                    processing = false;
+                    break; // force a draw reflecting the stop too
+                }
+                other => chat_history.push(other.to_string()),
+            }
         }
+        thread::sleep(Duration::from_millis(16));
     }
     disable_raw_mode().unwrap();
     stdout().execute(LeaveAlternateScreen).unwrap();

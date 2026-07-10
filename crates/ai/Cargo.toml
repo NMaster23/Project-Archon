@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 talos-core = { path = "../core", package = "core" }
+executor = { path = "../executor", package = "executor" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -19,3 +20,5 @@ ratatui = "0.30.2"
 tui-prompts = "0.6.7"
 crossterm = "0.29.0"
 rust-mcp-sdk = "0.10.0"
+ui = { path = "../ui", package = "ui" }
+async-trait = "0.1.89"
