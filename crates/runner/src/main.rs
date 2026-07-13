@@ -8,7 +8,6 @@ use talos_core::TalosBus;
 use talos_executor::McpServer;
 use talos_ui::{dashboard, select_menu};
 use mcpkit_axum::McpRouter;
-// TODO: add any other required axum/tower-http imports here
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -33,7 +32,7 @@ async fn main() {
     let (tx_in, mut rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
     let tx_out_stt = tx_out.clone();
     let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    // TODO: Start the MCP Server here
+    // [AI: Code to spawn MCP server was added here and removed as requested]
     tokio::spawn(async move {
         dashboard(stt_enabled, ui_rx).await;
     });

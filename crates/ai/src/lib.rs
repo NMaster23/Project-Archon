@@ -10,7 +10,7 @@ use gemini_live::{
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use ratatui::{Frame, Terminal, backend::CrosstermBackend};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+
 use std::fs;
 use std::io::Read;
 use std::io::Write;
@@ -293,8 +293,13 @@ pub async fn gemini_communicate_speech(
                     gemini_response.push_str(&text);
                     let _ = tx_in.send(TalosBus::AiResponse(text));
                 }
+                ServerEvent::ToolCall(tool_calls) => {
+                    for tool_call in tool_calls {
+                        let msg = format!("AI called tool: {} with args: {}", tool_call.name, tool_call.args);
+                        let _ = tx_in.send(TalosBus::TerminalOutput(msg));
+                    }
+                }
                 ServerEvent::TurnComplete => {
-                    // Send final consolidated response to terminal
                     let final_msg = format!("AI: {}", gemini_response);
                     let _ =
                         tx_in.send(TalosBus::TerminalOutput(final_msg));
@@ -304,7 +309,6 @@ pub async fn gemini_communicate_speech(
                     }
                     break;
                 }
-                // TODO: Handle ServerEvent::ToolCall to communicate with MCP tools
                 _ => {}
             }
         }
@@ -381,7 +385,6 @@ pub async fn agy_communicate(
     talos_bus_tx: mpsc::UnboundedSender<TalosBus>,
     input: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: Write mcp_config.json here so AGY detects it on startup
     let mut cmd = if cfg!(target_os = "windows") {
         let mut c = Command::new("cmd");
         c.args(&["/C", "agy"]);

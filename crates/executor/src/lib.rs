@@ -5,7 +5,7 @@ use std::io::Cursor;
 use xcap::image::{ImageFormat, RgbaImage};
 use xcap::{Frame, Monitor};
 use mcpkit::prelude::*;
-use mcpkit_axum::prelude::*;
+
 
 pub struct MouseMovement {
     pub x: i32,
@@ -147,5 +147,3 @@ pub async fn encode(frame: Frame, image_format: ImageFormat) {
     talos_core::TalosBus::ScreenCapture(buffer.into_inner());
     println!("screen captured");
 }
-
-// TODO: Implement start_mcpserver() here

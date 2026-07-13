@@ -14,6 +14,4 @@ talos-executor = { path = "../executor", package = "executor" }
 talos-plugins = { path = "../plugins", package = "plugins" }
 talos-ui = { path = "../ui", package = "ui" }
 app_dirs2 = "2.5.5"
-# TODO: Add mcpkit and axum dependencies here
-mcpkit-axum = "0.6.0"
-serde_json = "1.0.150"
+    # [AI: Dependencies for axum and mcpkit were added here and removed as requested]

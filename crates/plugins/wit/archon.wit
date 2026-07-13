@@ -1,0 +1,8 @@
+package archon:plugin;
+
+world tool {
+  export manifest: func() -> string;
+  export execute: func(tool-name: string, args-json: string) -> string;
+  import log: func(msg: string);
+  import render-widget: func(id: string, layout-json: string);
+}
