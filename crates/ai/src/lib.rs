@@ -304,6 +304,7 @@ pub async fn gemini_communicate_speech(
                     }
                     break;
                 }
+                // TODO: Handle ServerEvent::ToolCall to communicate with MCP tools
                 _ => {}
             }
         }
@@ -380,6 +381,7 @@ pub async fn agy_communicate(
     talos_bus_tx: mpsc::UnboundedSender<TalosBus>,
     input: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // TODO: Write mcp_config.json here so AGY detects it on startup
     let mut cmd = if cfg!(target_os = "windows") {
         let mut c = Command::new("cmd");
         c.args(&["/C", "agy"]);

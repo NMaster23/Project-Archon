@@ -3,6 +3,8 @@ name = "executor"
 version = "0.1.0"
 edition = "2024"
 
+
+
 [dependencies]
 talos-core = { path = "../core", package = "core" }
 tokio = { workspace = true }
@@ -16,3 +18,4 @@ axum = "0.8.9"
 async-trait = "0.1.89"
 mcpkit-server = "0.6.0"
 mcpkit-core = "0.6.0"
+# TODO: Add tower-http if needed

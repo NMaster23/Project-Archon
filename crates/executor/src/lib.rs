@@ -148,6 +148,4 @@ pub async fn encode(frame: Frame, image_format: ImageFormat) {
     println!("screen captured");
 }
 
-pub async fn start_mcpserver() -> std::io::Result<()> {
-    McpRouter::new(McpServer::new()).serve("0.0.0.0:3333").await
-}
+// TODO: Implement start_mcpserver() here

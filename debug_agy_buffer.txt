@@ -1,3 +1,0 @@
-Hello! How can I help you today?
-]0;C:\WINDOWS\system32\cmd.EXE 
-__TALOS_CMD_COMPLETE__
