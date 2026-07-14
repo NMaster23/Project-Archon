@@ -55,9 +55,11 @@ pub async fn start_server() -> anyhow::Result<()> {
                     Some(ai_msg) = rx_in.recv() => {
                         match ai_msg {
                             TalosBus::AiResponse(txt) => {
+                                println!("AGY: {}", txt);
                                 let _ = conn.send_to_client(&ServerToClient::AiResponse(txt)).await;
                             }
                             TalosBus::TerminalOutput(txt) => {
+                                println!("AGY Terminal: {}", txt);
                                 let _ = conn.send_to_client(&ServerToClient::TerminalOutput(txt)).await;
                             }
                             _ => {}
@@ -75,18 +77,24 @@ pub async fn run_client() -> anyhow::Result<()> {
             eprintln!("Critical Error: {:?}", e);
         }
     });
-    let mut conn = talos_transport::connect("ws://127.0.0.1:9090").await?;
+    let mut conn = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        loop {
+            match talos_transport::connect("ws://127.0.0.1:9090").await {
+                Ok(c) => break c,
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }).await.map_err(|_| anyhow::anyhow!("Timed out waiting for client to initialize"))?;
     let (stt_tx, mut stt_rx) = mpsc::unbounded_channel::<TalosBus>();
     let (ui_tx, ui_rx) = mpsc::unbounded_channel::<String>();
     
     let stt_enabled = Arc::new(AtomicBool::new(true));
     let stt_enabled_ui = stt_enabled.clone();
-    
-    // Spawn the UI dashboard
     tokio::spawn(async move {
         dashboard(stt_enabled_ui, ui_rx).await;
     });
-    
     std::thread::spawn(move || {
         talos_audio::stt(stt_tx, Arc::new(AtomicBool::new(false)), stt_enabled)
     });

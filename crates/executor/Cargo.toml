@@ -18,3 +18,5 @@ mcpkit-axum = "0.6.0"
 schemars = "1.2.1"
 axum = "0.8.9"
 serde = { version = "1.0.228", features = ["derive"] }
+base64 = "0.22.1"
+webp-screenshot-rust = "1.0.0"

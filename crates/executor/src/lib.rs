@@ -11,13 +11,18 @@ use schemars::JsonSchema;
 use serde::Serialize;
 use std::net::SocketAddr;
 use tower_mcp::{BoxError, CallToolResult, HttpTransport, McpRouter, ToolBuilder};
+use std::time::Instant;
+use base64::engine::general_purpose;
+use base64::prelude::*;
+use webp_screenshot_rust::{WebPScreenshot, CaptureConfig, WebPConfig};
 
 const TOOLS: &[(&str, &str)] = &[
     ("cursor_move", "Move the cursor on screen"),
     ("mouse_click", "Click left (1), right (2), or middle (3) mouse button"),
     ("mouse_scroll", "Scroll mouse wheel vertically"),
-    ("key_press", "Press a specific key"),
+    ("key_press", "Press a specific key or combination"),
     ("key_type", "Type a full string of text"),
+    ("view_screen", "Capture the screen and return it as an image to view"),
 ];
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -38,7 +43,7 @@ pub struct MouseScrollInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct KeyPressInput {
-    pub key: String,
+    pub keys: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -83,6 +88,8 @@ impl McpServer {
 }
 
 pub async fn tools() -> Result<(), BoxError> {
+    mcp_setup().await;
+
     let cursor_move = ToolBuilder::new("cursor_move")
         .description("Move the cursor to a specific coordinate on the screen.")
         .handler(|input: CursorMoveInput| async move {
@@ -121,9 +128,25 @@ pub async fn tools() -> Result<(), BoxError> {
         .description("Press any key on the keyboard.")
         .handler(|input: KeyPressInput| async move {
             let mut enigo = McpServer::get_enigo().unwrap();
-            let parsed_key = McpServer::parse_key_string(&input.key).await.unwrap();
-            enigo.key(parsed_key, Direction::Click).unwrap();
-            Ok(CallToolResult::text(format!("Pressed key: {} successfully.", input.key)))
+            let mut parsed_keys = Vec::new();
+            for k in &input.keys {
+                if let Some(parsed) = McpServer::parse_key_string(k).await {
+                    parsed_keys.push(parsed);
+                }
+            }
+            if parsed_keys.is_empty() {
+                return Ok(CallToolResult::text("No Valid Keys Provided"));
+            }
+            for key in parsed_keys.iter().take(parsed_keys.len() - 1) {
+                enigo.key(*key, Direction::Press).unwrap();
+            }
+            if let Some(last_key) = parsed_keys.last() {
+                enigo.key(*last_key, Direction::Click).unwrap();
+            }
+            for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)).rev() {
+                enigo.key(*key, Direction::Release).unwrap();
+            }
+            Ok(CallToolResult::text(format!("Pressed keys: {:?} successfully.", input.keys)))
         })
         .build();
     let key_type = ToolBuilder::new("key_type")
@@ -134,13 +157,33 @@ pub async fn tools() -> Result<(), BoxError> {
             Ok(CallToolResult::text(format!("Typed text: {} successfully.", input.text)))
         })
         .build();
+    let view_screen = ToolBuilder::new("view_screen")
+        .description("Take a capture of the screen to view")
+        .handler(|_: ()| async move {
+            let config = CaptureConfig {
+                webp_config: WebPConfig::high_quality(),
+                include_cursor: true,
+                use_hardware_acceleration: true,
+                ..Default::default()
+            };
+            let mut screenshot = WebPScreenshot::with_config(config).unwrap();
+            let results = screenshot.capture_all_displays();
+            if let Some(Ok(capture)) = results.into_iter().find(|r| r.is_ok()) {
+                let base64_img = general_purpose::STANDARD.encode(&capture.data);
+                Ok(CallToolResult::image(base64_img, "image/webp"))
+            } else {
+                Ok(CallToolResult::text("Failed to capture any displays."))
+            }
+        })
+        .build();
     let router = McpRouter::new()
         .server_info("talos-executor", "0.1.0")
         .tool(cursor_move)
         .tool(mouse_click)
         .tool(mouse_scroll)
         .tool(key_press)
-        .tool(key_type);
+        .tool(key_type)
+        .tool(view_screen);
     let transport = HttpTransport::new(router);
     let app = transport.into_router();
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
@@ -216,10 +259,26 @@ pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
             Ok("Scrolled the mouse wheel".into())
         }
         "key_press" => {
-            let key_str = parsed["key"].as_str().unwrap();
-            let key = McpServer::parse_key_string(key_str).await.unwrap();
-            enigo.key(key, Direction::Click).map_err(|e| e.to_string())?;
-            Ok("Pressed key".into())
+            let mut parsed_keys = Vec::new();
+            if let Some(keys_array) = parsed["keys"].as_array() {
+                for k in keys_array {
+                    if let Some(key_str) = k.as_str() {
+                        if let Some(parsed) = McpServer::parse_key_string(key_str).await {
+                            parsed_keys.push(parsed);
+                        }
+                    }
+                }
+            }
+            for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)) {
+                enigo.key(*key, Direction::Press).map_err(|e| e.to_string())?;
+            }
+            if let Some(last_key) = parsed_keys.last() {
+                enigo.key(*last_key, Direction::Click).map_err(|e| e.to_string())?;
+            }
+            for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)).rev() {
+                enigo.key(*key, Direction::Release).map_err(|e| e.to_string())?;
+            }
+            Ok("Pressed keys".into())
         }
         "key_type" => {
             enigo.text(parsed["type"].as_str().unwrap()).map_err(|e| e.to_string())?;
@@ -250,13 +309,17 @@ pub async fn mcp_setup() {
     if config.get("mcpServers").is_none() {
         config["mcpServers"] = json!({})
     }
-    config["mcpServers"]["talos-executor"] = json!({
+    let new_server = json!({
         "type": "http",
         "serverUrl": "http://127.0.0.1:3000/"
     });
-    if config.get("mcpServers").and_then(|m| m.get("talos-executor")) == Some(&config) {
+    
+    if config.get("mcpServers").and_then(|m| m.get("talos-executor")) == Some(&new_server) {
         return;
     }
+    
+    config["mcpServers"]["talos-executor"] = new_server;
+
     if let Some(parent) = &config_path.parent() {
         fs::create_dir_all(parent).unwrap();
     }
