@@ -13,5 +13,5 @@ talos-ai = { path = "../ai", package = "ai" }
 talos-executor = { path = "../executor", package = "executor" }
 talos-plugins = { path = "../plugins", package = "plugins" }
 talos-ui = { path = "../ui", package = "ui" }
+talos-transport = { path = "../transport", package = "transport" }
 app_dirs2 = "2.5.5"
-    # [AI: Dependencies for axum and mcpkit were added here and removed as requested]

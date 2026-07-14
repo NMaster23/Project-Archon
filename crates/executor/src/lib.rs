@@ -5,14 +5,43 @@ use std::io::Cursor;
 use xcap::image::{ImageFormat, RgbaImage};
 use xcap::{Frame, Monitor};
 use mcpkit::prelude::*;
+use axum;
+use schemars::JsonSchema;
+use serde::Serialize;
+use std::net::SocketAddr;
+use tower_mcp::{BoxError, CallToolResult, HttpTransport, McpRouter, ToolBuilder};
 
+const TOOLS: &[(&str, &str)] = &[
+    ("cursor_move", "Move the cursor on screen"),
+    ("mouse_click", "Click left (1), right (2), or middle (3) mouse button"),
+    ("mouse_scroll", "Scroll mouse wheel vertically"),
+    ("key_press", "Press a specific key"),
+    ("key_type", "Type a full string of text"),
+];
 
-pub struct MouseMovement {
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CursorMoveInput {
     pub x: i32,
     pub y: i32,
 }
 
-pub struct KeyboardInput {
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct MouseClickInput {
+    pub button: i32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct MouseScrollInput {
+    pub lines: i32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct KeyPressInput {
+    pub key: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct KeyTypeInput {
     pub text: String,
 }
 
@@ -52,66 +81,72 @@ impl McpServer {
     }
 }
 
-#[mcp_server(name = "talos-executor", version = "0.1.0")]
-impl McpServer {
-    #[tool(description = "Move the cursor to a specific coordinate on the screen.")]
-    pub async fn cursor_move(&self, x: i32, y: i32) -> ToolOutput {
-        let mut enigo = Self::get_enigo().unwrap();
-        enigo.move_mouse(x, y, Coordinate::Abs).unwrap();
-        ToolOutput::text(format!("Moved cursor to X: {} Y: {} on screen", x, y))
-    }
-    #[tool(description = "Click left, right, or middle mouse button.")]
-    pub async fn mouse_click(&self, button: i32) -> ToolOutput {
-        let mut enigo = Self::get_enigo().unwrap();
-        let mut clicked_button = String::new();
-        if button == 1 {
-            enigo.button(Button::Left, Direction::Click).unwrap();
-            clicked_button = "Left Button".to_string();
-        } else if button == 2 {
-            enigo.button(Button::Right, Direction::Click).unwrap();
-            clicked_button = "Right Button".to_string();
-        } else if button == 3 {
-            enigo.button(Button::Middle, Direction::Click).unwrap();
-            clicked_button = "Middle Button".to_string();
-        }
-        ToolOutput::text(format!("Clicked button: {} successfully", clicked_button))
-    }
-    #[tool(description = "Scroll the mouse wheel a certain amount of line.")]
-    pub async fn mouse_scroll(&self, lines: i32) -> ToolOutput {
-        let mut enigo = Self::get_enigo().unwrap();
-        enigo.scroll(lines, Axis::Vertical).unwrap();
-        ToolOutput::text(format!("Scrolled the mouse wheel {} successfully.", lines))
-    }
-    #[tool(description = "Press any key on the keyboard.")]
-    pub async fn key_press(&self, key: String) -> ToolOutput {
-        let mut enigo = Self::get_enigo().unwrap();
-        let parsed_key = Self::parse_key_string(&key).await.unwrap();
-        enigo.key(parsed_key, Direction::Click).unwrap();
-        ToolOutput::text(format!("Pressed key: {} successfully.", key))
-    }
-    #[tool(description = "Type a string of keys.")]
-    pub async fn key_type(&self, text: String) -> ToolOutput {
-        let mut enigo = Self::get_enigo().unwrap();
-        enigo.text(&text).unwrap();
-        ToolOutput::text(format!("Typed text: {} successfully.", text))
-    }
-    #[resource(
-        uri_pattern = "talos://placeholder",
-        name = "PlaceHolder",
-        description = "Placeholder resource (server exposes no real resources)",
-        mime_type = "text/plain"
-    )]
-    pub async fn placeholder_resource(&self, uri: &str) -> ResourceContents {
-        ResourceContents::text(uri, "")
-    }
-
-    #[prompt(description = "Placeholder prompt (server exposes no real prompts)")]
-    pub async fn placeholder_prompt(&self) -> GetPromptResult {
-        GetPromptResult {
-            description: None,
-            messages: vec![],
-        }
-    }
+pub async fn tools() -> Result<(), BoxError> {
+    let cursor_move = ToolBuilder::new("cursor_move")
+        .description("Move the cursor to a specific coordinate on the screen.")
+        .handler(|input: CursorMoveInput| async move {
+            let mut enigo = McpServer::get_enigo().unwrap();
+            enigo.move_mouse(input.x, input.y, Coordinate::Abs).unwrap();
+            Ok(CallToolResult::text(format!("Moved cursor to X: {} Y: {} on screen", input.x, input.y)))
+        })
+        .build();
+    let mouse_click = ToolBuilder::new("mouse_click")
+        .description("Click left, right, or middle mouse button.")
+        .handler(|input: MouseClickInput| async move {
+            let mut enigo = McpServer::get_enigo().unwrap();
+            let mut clicked_button = String::new();
+            if input.button == 1 {
+                enigo.button(Button::Left, Direction::Click).unwrap();
+                clicked_button = "Left Button".to_string();
+            } else if input.button == 2 {
+                enigo.button(Button::Right, Direction::Click).unwrap();
+                clicked_button = "Right Button".to_string();
+            } else if input.button == 3 {
+                enigo.button(Button::Middle, Direction::Click).unwrap();
+                clicked_button = "Middle Button".to_string();
+            }
+            Ok(CallToolResult::text(format!("Clicked button: {} successfully", clicked_button)))
+        })
+        .build();
+    let mouse_scroll = ToolBuilder::new("mouse_scroll")
+        .description("Scroll the mouse wheel a certain amount of line.")
+        .handler(|input: MouseScrollInput| async move {
+            let mut enigo = McpServer::get_enigo().unwrap();
+            enigo.scroll(input.lines, Axis::Vertical).unwrap();
+            Ok(CallToolResult::text(format!("Scrolled the mouse wheel {} successfully.", input.lines)))
+        })
+        .build();
+    let key_press = ToolBuilder::new("key_press")
+        .description("Press any key on the keyboard.")
+        .handler(|input: KeyPressInput| async move {
+            let mut enigo = McpServer::get_enigo().unwrap();
+            let parsed_key = McpServer::parse_key_string(&input.key).await.unwrap();
+            enigo.key(parsed_key, Direction::Click).unwrap();
+            Ok(CallToolResult::text(format!("Pressed key: {} successfully.", input.key)))
+        })
+        .build();
+    let key_type = ToolBuilder::new("key_type")
+        .description("Type a string of keys.")
+        .handler(|input: KeyTypeInput| async move {
+            let mut enigo = McpServer::get_enigo().unwrap();
+            enigo.text(&input.text).unwrap();
+            Ok(CallToolResult::text(format!("Typed text: {} successfully.", input.text)))
+        })
+        .build();
+    let router = McpRouter::new()
+        .server_info("talos-executor", "0.1.0")
+        .tool(cursor_move)
+        .tool(mouse_click)
+        .tool(mouse_scroll)
+        .tool(key_press)
+        .tool(key_type);
+    let transport = HttpTransport::new(router);
+    let app = transport.into_router();
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    println!("Talos Executor running on http://{}", addr);
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
 pub async fn screen_cap() {
@@ -146,4 +181,56 @@ pub async fn encode(frame: Frame, image_format: ImageFormat) {
         .expect("Failed to save image");
     talos_core::TalosBus::ScreenCapture(buffer.into_inner());
     println!("screen captured");
+}
+
+pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
+    let parsed: serde_json::Value = serde_json::from_str(args).map_err(|e| e.to_string())?;
+    let mut enigo = McpServer::get_enigo().unwrap();
+    match tool_name {
+        "cursor_move" => {
+            enigo.move_mouse(parsed["x"].as_i64().unwrap() as i32, parsed["y"].as_i64().unwrap() as i32, Coordinate::Abs).map_err(|e| e.to_string())?;
+            Ok("Moved cursor".into())
+        }
+        "mouse_click" => {
+            let button = match parsed["button"].as_i64().unwrap() {
+                1 => {
+                    Button::Left
+                }
+                2 => {
+                    Button::Right
+                }
+                3 => {
+                    Button::Middle
+                }
+                _ => {
+                    Button::Left
+                }
+            };
+            enigo.button(button, Direction::Click).map_err(|e| e.to_string())?;
+            Ok("Clicked button".into())
+        }
+        "mouse_scroll" => {
+            let lines = parsed["lines"].as_i64().unwrap() as i32;
+            enigo.scroll(lines, Axis::Vertical).unwrap();
+            Ok("Scrolled the mouse wheel".into())
+        }
+        "key_press" => {
+            let key_str = parsed["key"].as_str().unwrap();
+            let key = McpServer::parse_key_string(key_str).await.unwrap();
+            enigo.key(key, Direction::Click).map_err(|e| e.to_string())?;
+            Ok("Pressed key".into())
+        }
+        "key_type" => {
+            enigo.text(parsed["type"].as_str().unwrap()).map_err(|e| e.to_string())?;
+            Ok("Typed text".into())
+        }
+        _ => Err("Unknown tool".into()),
+    }
+}
+
+pub async fn get_tools() -> Vec<talos_core::ToolDeclaration> {
+    TOOLS.iter().map(|(name, desc)| talos_core::ToolDeclaration {
+        name: name.to_string(),
+        description: desc.to_string(),
+    }).collect()
 }
