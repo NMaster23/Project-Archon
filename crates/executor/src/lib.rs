@@ -1,7 +1,8 @@
+use std::{env, fs};
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use image::ImageFormat::{Jpeg, Png};
 use serde_json::{Value, json};
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use xcap::image::{ImageFormat, RgbaImage};
 use xcap::{Frame, Monitor};
 use mcpkit::prelude::*;
@@ -233,4 +234,32 @@ pub async fn get_tools() -> Vec<talos_core::ToolDeclaration> {
         name: name.to_string(),
         description: desc.to_string(),
     }).collect()
+}
+
+pub async fn mcp_setup() {
+    let config_path = std::env::home_dir().unwrap()
+        .join(".gemini")
+        .join("config")
+        .join("mcp_config.json");
+    let mut config: Value = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).unwrap_or_else(|_| "".to_string());
+        serde_json::from_str(&content).unwrap_or_else(|_| json!({}))
+    } else {
+        json!({})
+    };
+    if config.get("mcpServers").is_none() {
+        config["mcpServers"] = json!({})
+    }
+    config["mcpServers"]["talos-executor"] = json!({
+        "type": "http",
+        "serverUrl": "http://127.0.0.1:3000/"
+    });
+    if config.get("mcpServers").and_then(|m| m.get("talos-executor")) == Some(&config) {
+        return;
+    }
+    if let Some(parent) = &config_path.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    let updated_json = serde_json::to_string_pretty(&config).expect("Failed to create json");
+    fs::write(config_path, &updated_json).expect("Failed to save json");
 }

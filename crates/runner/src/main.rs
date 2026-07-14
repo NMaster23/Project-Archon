@@ -70,6 +70,11 @@ pub async fn start_server() -> anyhow::Result<()> {
 }
 
 pub async fn run_client() -> anyhow::Result<()> {
+    tokio::spawn(async move {
+        if let Err(e) = talos_executor::tools().await {
+            eprintln!("Critical Error: {:?}", e);
+        }
+    });
     let mut conn = talos_transport::connect("ws://127.0.0.1:9090").await?;
     let (stt_tx, mut stt_rx) = mpsc::unbounded_channel::<TalosBus>();
     let (ui_tx, ui_rx) = mpsc::unbounded_channel::<String>();
