@@ -91,7 +91,7 @@ impl AgySession {
                 if writer.flush().is_err() {
                     break;
                 }
-                let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_START__".to_string()))
+                let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_START__".to_string()));
                 let mut accumulated_output = String::new();
                 let start_time = std::time::Instant::now();
                 let mut last_chunk_time = start_time;

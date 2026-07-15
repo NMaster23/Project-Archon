@@ -23,8 +23,6 @@ pub async fn start_server() -> anyhow::Result<()> {
         tokio::spawn(async move {
             let mut conn = talos_transport::accept(stream).await.unwrap();
             conn.send_to_client(&ServerToClient::RequestToolRegistration).await.unwrap();
-            
-            // Channel to receive responses back from AGY CLI
             let (tx_in, mut rx_in) = mpsc::unbounded_channel::<TalosBus>();
             
             loop {
