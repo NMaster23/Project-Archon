@@ -309,20 +309,37 @@ pub async fn mcp_setup() {
     if config.get("mcpServers").is_none() {
         config["mcpServers"] = json!({})
     }
+    let mut changed = false;
+
     let new_server = json!({
         "type": "http",
         "serverUrl": "http://127.0.0.1:3000/"
     });
     
-    if config.get("mcpServers").and_then(|m| m.get("talos-executor")) == Some(&new_server) {
-        return;
+    if config.get("mcpServers").and_then(|m| m.get("talos-executor")) != Some(&new_server) {
+        config["mcpServers"]["talos-executor"] = new_server;
+        changed = true;
     }
-    
-    config["mcpServers"]["talos-executor"] = new_server;
 
-    if let Some(parent) = &config_path.parent() {
-        fs::create_dir_all(parent).unwrap();
+    let chrome_devtools = json!({
+        "command": "npx",
+        "args": [
+            "-y",
+            "chrome-devtools-mcp@latest",
+            "--browser-url=http://127.0.0.1:9222"
+        ]
+    });
+
+    if config.get("mcpServers").and_then(|m| m.get("chrome-devtools")) != Some(&chrome_devtools) {
+        config["mcpServers"]["chrome-devtools"] = chrome_devtools;
+        changed = true;
     }
-    let updated_json = serde_json::to_string_pretty(&config).expect("Failed to create json");
-    fs::write(config_path, &updated_json).expect("Failed to save json");
+
+    if changed {
+        if let Some(parent) = &config_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let updated_json = serde_json::to_string_pretty(&config).expect("Failed to create json");
+        fs::write(config_path, &updated_json).expect("Failed to save json");
+    }
 }

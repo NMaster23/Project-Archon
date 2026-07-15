@@ -91,12 +91,11 @@ impl AgySession {
                 if writer.flush().is_err() {
                     break;
                 }
-
+                let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_START__".to_string()))
                 let mut accumulated_output = String::new();
                 let start_time = std::time::Instant::now();
                 let mut last_chunk_time = start_time;
                 let mut got_first_chunk = false;
-                let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_START__".to_string()));
 
                 loop {
                     match output_rx.try_recv() {
@@ -118,7 +117,6 @@ impl AgySession {
                         }
                     }
                 }
-                let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_END__".to_string()));
                 let stripped = strip_ansi_escapes::strip(&accumulated_output.as_bytes());
                 let text = String::from_utf8_lossy(&stripped);
                 let clean_output = text
@@ -157,6 +155,7 @@ impl AgySession {
                     let formatted_output = format!("AI: {}", clean_output);
                     let _ = talos_bus_tx.send(TalosBus::TerminalOutput(formatted_output));
                 }
+                let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_END__".to_string()));
             }
             let _ = child.kill();
         });
