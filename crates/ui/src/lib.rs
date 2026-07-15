@@ -9,6 +9,38 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
+use axum::routing::get;
+use axum::{
+    http::{header, StatusCode, Uri},
+    response::{IntoResponse, Response},
+    Router,
+};
+use rust_embed::RustEmbed;
+
+#[derive(RustEmbed)]
+#[folder = "web_frontend/dist/"]
+struct Assets;
+
+async fn static_handler(uri: Uri) -> Response {
+    let mut path = uri.path().trim_start_matches('/');
+    if path.is_empty() {
+        path = "index.html";
+    }
+
+    match Assets::get(path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            ([(header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
+        }
+        None => {
+            if let Some(index) = Assets::get("index.html") {
+                ([(header::CONTENT_TYPE, "text/html")], index.data).into_response()
+            } else {
+                StatusCode::NOT_FOUND.into_response()
+            }
+        }
+    }
+}
 
 const DEFAULT_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -51,70 +83,6 @@ impl Spinner {
     }
 }
 
-pub async fn select_menu(options: Vec<&str>) -> usize {
-    enable_raw_mode().unwrap();
-    stdout().execute(EnterAlternateScreen).unwrap();
-    let mut terminal = Terminal::new(CrosstermBackend::new(stdout())).unwrap();
-    let mut default_index = 0;
-    loop {
-        terminal
-            .draw(|f| {
-                let term_area = f.area();
-                let max_width = options.iter().map(|s| s.len()).max().unwrap_or(0);
-                let title = "Select an option";
-                let width = (max_width.max(title.len()) + 4) as u16;
-                let height = (options.len() + 2) as u16;
-                let area = Rect::new(
-                    term_area.x,
-                    term_area.y,
-                    width.min(term_area.width),
-                    height.min(term_area.height),
-                );
-
-                let items: Vec<ListItem> = options
-                    .iter()
-                    .enumerate()
-                    .map(|(i, option)| {
-                        let style = if i == default_index {
-                            Style::default().fg(Color::Yellow)
-                        } else {
-                            Style::default()
-                        };
-                        ListItem::new(*option).style(style)
-                    })
-                    .collect();
-                let list =
-                    List::new(items).block(Block::default().title(title).borders(Borders::ALL));
-                f.render_widget(list, area);
-            })
-            .unwrap();
-
-        if let Event::Key(key) = event::read().unwrap() {
-            if key.kind == KeyEventKind::Press {
-                match key.code {
-                    KeyCode::Up => {
-                        if default_index > 0 {
-                            default_index -= 1;
-                        }
-                    }
-                    KeyCode::Down => {
-                        if default_index < options.len() - 1 {
-                            default_index += 1;
-                        }
-                    }
-                    KeyCode::Enter => {
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    disable_raw_mode().unwrap();
-    stdout().execute(LeaveAlternateScreen).unwrap();
-    default_index
-}
 
 pub async fn dashboard(
     stt_enabled: Arc<AtomicBool>,
@@ -191,4 +159,13 @@ pub async fn dashboard(
     }
     disable_raw_mode().unwrap();
     stdout().execute(LeaveAlternateScreen).unwrap();
+}
+
+pub async fn server_dashboard() {
+    let app = Router::new()
+        .route("/api/status", get(|| async { "Server is running" }))
+        .fallback(static_handler);
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.unwrap();
+    println!("Listening on {}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await.unwrap();
 }

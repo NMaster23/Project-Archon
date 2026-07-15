@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use talos_ai::{auth, gemini_api, get_auth};
 use talos_audio::stt;
 use talos_core::{ClientToServer, ServerToClient, TalosBus};
-use talos_ui::{dashboard, select_menu};
+use talos_ui::dashboard;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -24,10 +24,8 @@ pub async fn start_server() -> anyhow::Result<()> {
             let mut conn = talos_transport::accept(stream).await.unwrap();
             conn.send_to_client(&ServerToClient::RequestToolRegistration).await.unwrap();
             let (tx_in, mut rx_in) = mpsc::unbounded_channel::<TalosBus>();
-            
             loop {
                 tokio::select! {
-                    // Receive from client and forward to AGY
                     Ok(message) = conn.recv_from_client() => {
                         match message {
                             ClientToServer::VoiceTranscript(text) => {
@@ -35,7 +33,6 @@ pub async fn start_server() -> anyhow::Result<()> {
                                 if !processed.is_empty() {
                                     println!("User: {}", processed);
                                     let tx_in_clone = tx_in.clone();
-                                    // Spawn agy_communicate in the background
                                     tokio::spawn(async move {
                                         if let Err(e) = talos_ai::agy_communicate(true, tx_in_clone, &processed).await {
                                             eprintln!("AGY CLI Error: {:?}", e);
@@ -134,14 +131,19 @@ async fn main() {
         run_client().await.unwrap();
         return;
     }
+
     let data_path = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
     let completed = Arc::new(AtomicBool::new(false));
     let completed_clone = completed.clone();
     let speaking = Arc::new(AtomicBool::new(false));
     let speaking_clone = speaking.clone();
-    let options = vec!["API", "OAuth"];
-    let selection = select_menu(options).await;
-    let oauth_or_api = Arc::new(AtomicBool::new(selection == 0));
+    
+    // EASILY CHANGEABLE BACKEND CONFIGURATION
+    // Change this string to "API" or "OAuth" to switch backends without a UI prompt
+    let backend = "OAuth"; 
+    let use_api = backend == "API";
+    
+    let oauth_or_api = Arc::new(AtomicBool::new(use_api));
     let stt_enabled = Arc::new(AtomicBool::new(true));
     let stt_enabled_clone = stt_enabled.clone();
     let (start_tx, start_rx) = tokio::sync::oneshot::channel();
@@ -150,14 +152,18 @@ async fn main() {
     let (tx_in, mut rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
     let tx_out_stt = tx_out.clone();
     let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    
     tokio::spawn(async move {
         dashboard(stt_enabled, ui_rx).await;
     });
     thread::spawn(move || {
         stt(tx_out_stt, speaking_clone, stt_enabled_clone);
     });
+    
     let _ = start_rx.await;
+    
     if oauth_or_api.load(Ordering::Relaxed) {
+        println!("API selected, using gemini_api...");
         let user_data = Some(
             if std::fs::exists(data_path.join("user_api.info")).unwrap() {
                 let auth_data = get_auth(&data_path).await;
