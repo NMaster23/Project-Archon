@@ -9,6 +9,7 @@ log = { workspace = true }
 anyhow = { workspace = true }
 talos-core = { path = "../core", package = "core" }
 talos-audio = { path = "../audio", package = "audio" }
+talos-auth = { path = "../auth", package = "auth" }
 talos-ai = { path = "../ai", package = "ai" }
 talos-executor = { path = "../executor", package = "executor" }
 talos-plugins = { path = "../plugins", package = "plugins" }

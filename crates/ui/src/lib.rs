@@ -9,9 +9,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{http::{header, StatusCode, Uri}, response::{IntoResponse, Response}, Json, Router};
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use rust_embed::RustEmbed;
 
@@ -28,7 +28,16 @@ struct Assets;
 #[derive(Clone)]
 struct AppState {
     start_time: Instant,
+    auth_state: talos_auth::AuthState,
 }
+
+impl axum::extract::FromRef<AppState> for talos_auth::AuthState {
+    fn from_ref(app_state: &AppState) -> talos_auth::AuthState {
+        app_state.auth_state.clone()
+    }
+}
+
+
 
 pub async fn get_server_status(State(state): State<AppState>) -> Json<ServerStatus> {
     Json(ServerStatus {
@@ -206,19 +215,24 @@ pub async fn dashboard(
                 other => chat_history.push(other.to_string()),
             }
         }
-        thread::sleep(Duration::from_millis(16));
+        tokio::time::sleep(Duration::from_millis(16)).await;
     }
     disable_raw_mode().unwrap();
     stdout().execute(LeaveAlternateScreen).unwrap();
 }
 
+
+
 pub async fn server_dashboard() {
     let state = AppState {
         start_time: Instant::now(),
+        auth_state: talos_auth::AuthState::new(),
     };
     let app = Router::new()
         .route("/api/status", get(get_server_status))
         .route("/api/talosbus", get(get_talosbus_ws))
+        .route("/api/2fa/signup", post(talos_auth::totp_setup_handler))
+        .route("/api/2fa/verify", post(talos_auth::totp_verify_handler))
         .fallback(static_handler)
         .with_state(state);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.unwrap();

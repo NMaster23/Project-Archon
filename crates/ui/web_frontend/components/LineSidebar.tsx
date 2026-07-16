@@ -32,18 +32,18 @@ const FALLOFF_CURVES: Record<Falloff, (p: number) => number> = {
 };
 
 const DEFAULT_ITEMS = [
-  'Dashboard',
-  'Core Engine',
-  'Task Runner',
-  'AI Service',
-  'Audio Engine',
-  'Executor',
-  'Plugin Manager',
-  'Transport Layer',
-  'Models',
-  'System Logs',
-  'Settings',
-  'Terminal'
+  'Overview',
+  'Components',
+  'Animations',
+  'Backgrounds',
+  'Showcase',
+  'Playground',
+  'Templates',
+  'Changelog',
+  'Community',
+  'Resources',
+  'Documentation',
+  'Support'
 ];
 
 const LineSidebar = ({
@@ -113,37 +113,25 @@ const LineSidebar = ({
     rafRef.current = requestAnimationFrame(runFrame);
   }, [runFrame]);
 
-  useEffect(() => {
-    const handleGlobalPointerMove = (e: PointerEvent) => {
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLUListElement>) => {
       const list = listRef.current;
       if (!list) return;
       const rect = list.getBoundingClientRect();
-      
-      // Calculate distance considering both X and Y for a global proximity effect
-      const pointerX = e.clientX;
       const pointerY = e.clientY - rect.top;
-      
-      let distanceX = 0;
-      if (pointerX < rect.left) distanceX = rect.left - pointerX;
-      else if (pointerX > rect.right) distanceX = pointerX - rect.right;
-      
       const ease = FALLOFF_CURVES[falloff] ?? FALLOFF_CURVES.linear;
       const items = itemRefs.current;
-      
       for (let i = 0; i < items.length; i++) {
         const el = items[i];
         if (!el) continue;
         const center = el.offsetTop + el.offsetHeight / 2;
-        const distanceY = Math.abs(pointerY - center);
-        const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+        const distance = Math.abs(pointerY - center);
         targetsRef.current[i] = ease(Math.max(0, 1 - distance / proximityRadius));
       }
       startLoop();
-    };
-
-    window.addEventListener('pointermove', handleGlobalPointerMove);
-    return () => window.removeEventListener('pointermove', handleGlobalPointerMove);
-  }, [falloff, proximityRadius, startLoop]);
+    },
+    [falloff, proximityRadius, startLoop]
+  );
 
   const handlePointerLeave = useCallback(() => {
     targetsRef.current = targetsRef.current.map(() => 0);
@@ -163,13 +151,8 @@ const LineSidebar = ({
   }, [activeIndex, startLoop]);
 
   useEffect(
-    () => {
-      return () => {
-        if (rafRef.current != null) {
-          cancelAnimationFrame(rafRef.current);
-          rafRef.current = null;
-        }
-      };
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     },
     []
   );
@@ -192,7 +175,7 @@ const LineSidebar = ({
         } as CSSProperties
       }
     >
-      <ul ref={listRef} className="line-sidebar__list" onPointerLeave={handlePointerLeave}>
+      <ul ref={listRef} className="line-sidebar__list" onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave}>
         {items.map((label, index) => (
           <li
             key={`${label}-${index}`}

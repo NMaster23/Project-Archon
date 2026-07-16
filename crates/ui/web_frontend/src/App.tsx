@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface ServerStatus {
   uptime: number;
   status: number;
 }
-import MagicRings from './MagicRings';
-import LineSidebar from './LineSidebar';
+import MagicRings from '../components/MagicRings';
+import LineSidebar from '../components/LineSidebar';
+import LiquidGlass from 'liquid-glass-react'
 
 import Page1 from './Page1';
 import Page2 from './Page2';
@@ -20,10 +21,14 @@ import Page10 from './Page10';
 import Page11 from './Page11';
 import Page12 from './Page12';
 
+import SignIn from './SignIn';
+import SignUp from './SignUp';
+
 export default function App() {
+  const [isSignedIn] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  // @ts-ignore
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch('/api/status')
@@ -54,41 +59,95 @@ export default function App() {
       case 9: return <Page10 />;
       case 10: return <Page11 />;
       case 11: return <Page12 />;
+      case 12: return <SignUp />;
+      case 13: return <SignIn />;
       default:
         return (
-          <div style={{ 
-            position: 'absolute', 
-            top: '50%', 
-            left: '50%', 
-            transform: 'translate(-50%, -50%)', 
-            pointerEvents: 'none',
-            fontSize: 150,
-            fontWeight: 100,
-            background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #A855F7 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            userSelect: 'none',
-            filter: 'drop-shadow(0 0 40px rgba(79, 172, 254, 0.3))',
-            letterSpacing: '-0.05em',
-            textAlign: 'center',
-            lineHeight: 1
-          }}>
-            Project Archon
-          </div>
+          <>
+            <div style={{ 
+              position: 'absolute', 
+              top: '50%', 
+              left: '50%', 
+              transform: 'translate(-50%, -50%)', 
+              pointerEvents: 'none',
+              fontSize: 150,
+              fontWeight: 100,
+              background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #A855F7 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              fontFamily: 'system-ui, -apple-system, sans-serif',
+              userSelect: 'none',
+              filter: 'drop-shadow(0 0 40px rgba(79, 172, 254, 0.3))',
+              letterSpacing: '-0.05em',
+              textAlign: 'center',
+              lineHeight: 1
+            }}>
+              Project Archon
+            </div>
+            <div 
+              style={{ 
+              position: 'absolute', 
+              top: 'calc(50% + 120px)', 
+              left: '50%', 
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'auto',
+              width: '320px',
+              height: '120px'
+            }}>
+              <LiquidGlass
+                mouseContainer={containerRef}
+                displacementScale={64}
+                blurAmount={0.5}
+                saturation={130}
+                aberrationIntensity={2}
+                elasticity={0.35}
+                cornerRadius={100}
+                padding="16px 32px"
+                style={{ position: 'absolute', top: '50%', left: '50%' }}
+                onClick={() => setActiveIndex(12)}
+              >
+                <span className="text-white font-medium whitespace-nowrap">Sign Up</span>
+              </LiquidGlass>
+            </div>
+            <div 
+              style={{ 
+              position: 'absolute', 
+              top: 'calc(50% + 190px)', 
+              left: '50%', 
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'auto',
+              width: '250px',
+              height: '90px'
+            }}>
+              <LiquidGlass
+                mouseContainer={containerRef}
+                displacementScale={64}
+                blurAmount={0.5}
+                saturation={130}
+                aberrationIntensity={2}
+                elasticity={0.35}
+                cornerRadius={100}
+                padding="12px 25px"
+                style={{ position: 'absolute', top: '50%', left: '50%' }}
+                onClick={() => setActiveIndex(13)}
+              >
+                <span className="text-white font-medium whitespace-nowrap">Sign In</span>
+              </LiquidGlass>
+            </div>
+          </>
         );
     }
   };
 
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
-      
-      {/* Tiny overlay for our backend pass-through */}
-      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 100, color: 'white', opacity: 0.5, fontFamily: 'sans-serif' }}>
+    <div 
+      ref={containerRef} 
+      className="w-screen h-screen relative overflow-hidden bg-black"
+    >
+      <div className="absolute top-4 right-4 z-[100] text-white/50 font-sans">
         {serverStatus ? `Backend online: Status ${serverStatus.status} (Uptime ${serverStatus.uptime}s)` : "Connecting to backend..."}
       </div>
-
-      <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+      <div className="absolute inset-0 z-0">
         <MagicRings
           color="#A855F7"
           colorTwo="#6366F1"
@@ -113,16 +172,16 @@ export default function App() {
           clickBurst={false}
         />
       </div>
-
-      <div style={{ position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none' }}>
-        <div style={{ pointerEvents: 'auto', width: '100%', height: '100%', paddingLeft: '20rem' }}>
+      <div className="absolute inset-0 z-10 pointer-events-none">
+        <div className={`pointer-events-auto w-full h-full ${isSignedIn ? 'pl-[20rem]' : ''}`}>
           {renderContent()}
         </div>
       </div>
-
-      <div style={{ position: 'absolute', top: '50%', left: '4rem', transform: 'translateY(-50%)', zIndex: 10 }}>
-        <LineSidebar onItemClick={(index: number) => setActiveIndex(index)} />
-      </div>
+      {isSignedIn && (
+        <div className="absolute top-1/2 left-16 -translate-y-1/2 z-20">
+          <LineSidebar onItemClick={(index: number) => setActiveIndex(index)} />
+        </div>
+      )}
     </div>
   );
 }

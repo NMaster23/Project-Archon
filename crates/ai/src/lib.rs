@@ -1,16 +1,8 @@
-use crossterm::{
-    ExecutableCommand,
-    event::{self, Event},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
 use gemini_live::{
     Auth, GenerationConfig, Modality, ReconnectPolicy, ServerEvent, Session, SessionConfig,
     SetupConfig, TransportConfig,
 };
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
-use ratatui::{Frame, Terminal, backend::CrosstermBackend};
-use serde::{Deserialize, Serialize};
-
 use std::fs;
 use std::io::Read;
 use std::io::Write;
@@ -19,27 +11,9 @@ use std::process::Command;
 use std::time::Duration;
 use talos_core::TalosBus;
 use tokio::sync::mpsc;
-use tui_prompts::{Prompt, State, Status, TextPrompt, TextRenderStyle, TextState};
-
-#[derive(Serialize, Deserialize)]
-pub struct AuthData {
-    pub data: String,
-}
 
 pub struct StreamingSource {
     receiver: std::sync::mpsc::Receiver<f32>,
-}
-
-pub struct App<'a> {
-    apikey_state: TextState<'a>,
-}
-
-impl<'a> App<'a> {
-    fn draw_ui(&mut self, frame: &mut Frame) {
-        TextPrompt::from("Gemini API Key")
-            .with_render_style(TextRenderStyle::Password)
-            .draw(frame, frame.area(), &mut self.apikey_state);
-    }
 }
 
 pub struct AgySession {
@@ -191,43 +165,6 @@ impl rodio::Source for StreamingSource {
     fn total_duration(&self) -> Option<Duration> {
         None
     }
-}
-
-pub async fn auth(path: &PathBuf) {
-    let mut stdout = std::io::stdout();
-    enable_raw_mode().unwrap();
-    stdout.execute(EnterAlternateScreen).unwrap();
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend).unwrap();
-    let mut app = App {
-        apikey_state: TextState::new(),
-    };
-    let api_key = loop {
-        terminal.draw(|f| app.draw_ui(f)).unwrap();
-        if let Event::Key(key) = event::read().unwrap() {
-            app.apikey_state.handle_key_event(key);
-
-            if app.apikey_state.status() == Status::Done {
-                break app.apikey_state.value().to_string();
-            } else if app.apikey_state.status() == Status::Aborted {
-                break String::new();
-            }
-        }
-    };
-    disable_raw_mode().unwrap();
-    std::io::stdout().execute(LeaveAlternateScreen).unwrap();
-    if !api_key.is_empty() {
-        let auth_data = AuthData {
-            data: api_key.trim().to_string(),
-        };
-        let json = serde_json::to_string(&auth_data).unwrap();
-        fs::write(path.join("user_api.info"), json).unwrap();
-    }
-}
-
-pub async fn get_auth(path: &PathBuf) -> AuthData {
-    let json = fs::read_to_string(path.join("user_api.info")).unwrap();
-    serde_json::from_str(&json).unwrap()
 }
 
 pub async fn gemini_communicate_speech(
