@@ -10,16 +10,67 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use axum::routing::get;
-use axum::{
-    http::{header, StatusCode, Uri},
-    response::{IntoResponse, Response},
-    Router,
-};
+use axum::{http::{header, StatusCode, Uri}, response::{IntoResponse, Response}, Json, Router};
+use axum::extract::State;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use rust_embed::RustEmbed;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ServerStatus {
+    uptime: u64,
+    status: i32,
+}
 
 #[derive(RustEmbed)]
 #[folder = "web_frontend/dist/"]
 struct Assets;
+
+#[derive(Clone)]
+struct AppState {
+    start_time: Instant,
+}
+
+pub async fn get_server_status(State(state): State<AppState>) -> Json<ServerStatus> {
+    Json(ServerStatus {
+        uptime: state.start_time.elapsed().as_secs(),
+        status: 200,
+    })
+}
+
+pub async fn handle_ws_talosbus(mut socket: WebSocket) {
+    while let Some(msg_result) = socket.recv().await {
+        let msg = match msg_result {
+            Ok(msg) => msg,
+            Err(e) => {
+                eprintln!("Error in websocket: {}", e);
+                break;
+            }
+        };
+        match msg {
+            Message::Text(text) => {
+                println!("{}", text);
+                if let Err(e) = socket.send(Message::Text(format!("Echo: {}", text))).await {
+                    eprintln!("Failed to send message: {}", e);
+                    break;
+                }
+            }
+            Message::Binary(bytes) => {
+                println!("Bytes: {:?}", bytes);
+            }
+            Message::Close(_) => {
+                println!("Closing websocket connection");
+                break;
+            }
+            _ => {
+                println!("Unknown Error");
+            }
+        }
+    }
+}
+
+pub async fn get_talosbus_ws(ws: WebSocketUpgrade) -> Response {
+    ws.on_upgrade(|socket| handle_ws_talosbus(socket))
+}
 
 async fn static_handler(uri: Uri) -> Response {
     let mut path = uri.path().trim_start_matches('/');
@@ -162,9 +213,14 @@ pub async fn dashboard(
 }
 
 pub async fn server_dashboard() {
+    let state = AppState {
+        start_time: Instant::now(),
+    };
     let app = Router::new()
-        .route("/api/status", get(|| async { "Server is running" }))
-        .fallback(static_handler);
+        .route("/api/status", get(get_server_status))
+        .route("/api/talosbus", get(get_talosbus_ws))
+        .fallback(static_handler)
+        .with_state(state);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.unwrap();
     println!("Listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();

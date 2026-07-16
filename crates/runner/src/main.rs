@@ -16,7 +16,9 @@ const APP_INFO: AppInfo = AppInfo {
 pub async fn start_server() -> anyhow::Result<()> {
     let listener = talos_transport::listen("0.0.0.0:9090").await?;
     println!("Server is listening on port 9090 (Using AGY CLI mode)");
-
+    tokio::spawn(async move {
+        talos_ui::server_dashboard().await;
+    });
     loop {
         let (stream, _) = listener.accept().await?;
         
