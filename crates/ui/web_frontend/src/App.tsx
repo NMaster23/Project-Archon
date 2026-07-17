@@ -59,8 +59,8 @@ export default function App() {
       case 9: return <Page10 />;
       case 10: return <Page11 />;
       case 11: return <Page12 />;
-      case 12: return <SignUp />;
-      case 13: return <SignIn />;
+      case 12: return <SignUp setActiveIndex={setActiveIndex} />;
+      case 13: return <SignIn setActiveIndex={setActiveIndex} />;
       default:
         return (
           <>

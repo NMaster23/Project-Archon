@@ -233,6 +233,7 @@ pub async fn server_dashboard() {
         .route("/api/talosbus", get(get_talosbus_ws))
         .route("/api/2fa/signup", post(talos_auth::totp_setup_handler))
         .route("/api/2fa/verify", post(talos_auth::totp_verify_handler))
+        .route("/api/2fa/login", post(talos_auth::totp_login_handler))
         .fallback(static_handler)
         .with_state(state);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.unwrap();

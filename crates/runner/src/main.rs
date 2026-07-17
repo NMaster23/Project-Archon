@@ -140,12 +140,8 @@ async fn main() {
     let completed_clone = completed.clone();
     let speaking = Arc::new(AtomicBool::new(false));
     let speaking_clone = speaking.clone();
-    
-    // EASILY CHANGEABLE BACKEND CONFIGURATION
-    // Change this string to "API" or "OAuth" to switch backends without a UI prompt
     let backend = "OAuth"; 
     let use_api = backend == "API";
-    
     let oauth_or_api = Arc::new(AtomicBool::new(use_api));
     let stt_enabled = Arc::new(AtomicBool::new(true));
     let stt_enabled_clone = stt_enabled.clone();
@@ -168,16 +164,14 @@ async fn main() {
     if oauth_or_api.load(Ordering::Relaxed) {
         println!("API selected, using gemini_api...");
         let user_data = Some(
-            if std::fs::exists(data_path.join("user_api.info")).unwrap() {
-                let auth_data = get_auth(&data_path).await;
+            if let Some(auth_data) = get_auth(2).await {
                 completed_clone.store(true, Ordering::Relaxed);
                 auth_data
             } else {
-                let _ = std::fs::create_dir_all(&data_path);
-                auth(&data_path).await;
+                auth("INSERT_API_KEY_OR_SECRET", 2).await;
                 completed_clone.store(true, Ordering::Relaxed);
-                println!("Created user_api.info");
-                get_auth(&data_path).await
+                println!("Created user_api.info with dummy data");
+                get_auth(2).await.unwrap()
             },
         );
         if completed.load(Ordering::Relaxed) {

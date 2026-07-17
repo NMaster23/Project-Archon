@@ -14,3 +14,8 @@ oauth2 = "5.0.0"
 magic-crypt = "4.0.1"
 totp-rs = { version = "5.7.2", features = ["qr", "gen_secret"] }
 axum = { version = "0.7" }
+directories = "6.0.0"
+cocoon = "0.4.3"
+rand = "0.8.6"
+hex = "0.4.3"
+keyring = "4.1.5"

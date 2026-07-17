@@ -1,3 +1,4 @@
+use directories::ProjectDirs;
 use crossterm::{
     ExecutableCommand,
     event::{self, Event},
@@ -14,6 +15,10 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use axum::extract::State as AxumState;
 use axum::Json;use axum::http::StatusCode;
+use cocoon::Cocoon;
+use rand::{rngs::OsRng, RngCore};
+use totp_rs::qrcodegen_image::image::EncodableLayout;
+
 #[derive(Clone)]
 pub struct AuthState {
     pub start_time: Instant,
@@ -63,41 +68,48 @@ impl<'a> App<'a> {
     }
 }
 
-pub async fn auth(path: &PathBuf) {
-    let mut stdout = std::io::stdout();
-    enable_raw_mode().unwrap();
-    stdout.execute(EnterAlternateScreen).unwrap();
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend).unwrap();
-    let mut app = App {
-        apikey_state: TextState::new(),
-    };
-    let api_key = loop {
-        terminal.draw(|f| app.draw_ui(f)).unwrap();
-        if let Event::Key(key) = event::read().unwrap() {
-            app.apikey_state.handle_key_event(key);
-
-            if app.apikey_state.status() == Status::Done {
-                break app.apikey_state.value().to_string();
-            } else if app.apikey_state.status() == Status::Aborted {
-                break String::new();
-            }
+pub async fn auth(input: &str, case: i32) {
+    let proj_dirs = ProjectDirs::from("com", "NMaster23", "Talos").expect("Could not find project directories");
+    let config_dir = proj_dirs.config_dir();
+    fs::create_dir_all(config_dir).unwrap();
+    let entry = keyring::Entry::new("Talos", "encryption_key").unwrap();
+    let password: Vec<u8> = match entry.get_password() {
+        Ok(hex_str) => hex::decode(hex_str).unwrap(),
+        Err(_) => {
+            let mut new_key = [0u8; 32];
+            OsRng.fill_bytes(&mut new_key);
+            entry.set_password(&hex::encode(new_key)).unwrap();
+            new_key.to_vec()
         }
     };
-    disable_raw_mode().unwrap();
-    std::io::stdout().execute(LeaveAlternateScreen).unwrap();
-    if !api_key.is_empty() {
-        let auth_data = AuthData {
-            data: api_key.trim().to_string(),
-        };
-        let json = serde_json::to_string(&auth_data).unwrap();
-        fs::write(path.join("user_api.info"), json).unwrap();
+    let mut cocoon = Cocoon::new(&password);
+    let auth_data = AuthData {
+        data: input.to_string(),
+    };
+    let json = serde_json::to_string(&auth_data).unwrap();
+    let encrypted: Vec<u8> = cocoon.wrap(json.as_bytes()).unwrap();
+    if case == 1 {
+        fs::write(config_dir.join("totp_code.info"), encrypted).unwrap();
+    } else if case == 2 {
+        fs::write(config_dir.join("user_api.info"), encrypted).unwrap();
     }
 }
 
-pub async fn get_auth(path: &PathBuf) -> AuthData {
-    let json = fs::read_to_string(path.join("user_api.info")).unwrap();
-    serde_json::from_str(&json).unwrap()
+pub async fn get_auth(case: i32) -> Option<AuthData> {
+    let proj_dirs = ProjectDirs::from("com", "NMaster23", "Talos")?;
+    let config_dir = proj_dirs.config_dir();
+    let file_path = match case {
+        1 => config_dir.join("totp_code.info"),
+        2 => config_dir.join("user_api.info"),
+        _ => return None,
+    };
+    let encrypted = fs::read(file_path).ok()?;
+    let entry = keyring::Entry::new("Talos", "encryption_key").ok()?;
+    let hex_str = entry.get_password().ok()?;
+    let password = hex::decode(hex_str).ok()?;
+    let mut cocoon = Cocoon::new(&password);
+    let decrypted = cocoon.unwrap(&encrypted).ok()?;
+    serde_json::from_slice(&decrypted).ok()
 }
 
 pub async fn totp_setup(email: &str) -> SetupResponse {
@@ -155,6 +167,7 @@ pub async fn totp_verify_handler(
     if let Some(secret) = secret_opt {
         let is_valid = totp_verify(&secret, &payload.code, &payload.email).await;
         if is_valid {
+            auth(&secret, 1).await;
             if let Ok(mut pending) = state.pending_totp.write() {
                 pending.remove(&payload.email);
             }
@@ -164,5 +177,18 @@ pub async fn totp_verify_handler(
         }
     } else {
         Err(StatusCode::BAD_REQUEST)
+    }
+}
+
+pub async fn totp_login_handler(
+    AxumState(state): AxumState<AuthState>,
+    Json(payload): Json<VerifyRequest>,
+) -> Result<Json<bool>, StatusCode> {
+    let secret = get_auth(1).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    let valid = totp_verify(&secret.data, &payload.code, &payload.email).await;
+    if valid {
+        Ok(Json(true))
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
     }
 }

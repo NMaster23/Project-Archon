@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import LoginPage, { Logo, Username, Password, Input } from '@react-login-page/page1';
 import LoginLogo from 'react-login-page/logo-rect';
 
-const SignUp = () => {
+interface SignUpProps {
+  setActiveIndex: (index: number | null) => void;
+}
+
+const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
   const [step, setStep] = useState<'signup' | 'setup_2fa'>('signup');
   const [email, setEmail] = useState('');
   const [qrCode, setQrCode] = useState('');
@@ -40,13 +44,13 @@ const SignUp = () => {
       const response = await fetch('/api/2fa/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, totpCode }),
+        body: JSON.stringify({ email, code: totpCode }),
       });
 
       if (response.ok) {
-        alert('Verification successful! You can now log in.');
+        setActiveIndex(0);
       } else {
-        console.error('Invalid TOTP code');
+        alert('Verification failed. Please try again.');
       }
     } catch (error) {
       console.error('Error during verification:', error);
