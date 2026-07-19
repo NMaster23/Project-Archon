@@ -13,7 +13,7 @@ use webrtc_vad::*;
 pub fn stt(
     tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>,
     speaking: Arc<AtomicBool>,
-    stt_enabled: Arc<AtomicBool>,
+    stt_disabled: Arc<AtomicBool>,
 ) {
     let mut model = StreamingModel::load(
         &PathBuf::from("models\\moonshine-streaming-medium-onnx"),
@@ -51,7 +51,7 @@ pub fn stt(
             let sample = frame.iter().sum::<f32>() / channels as f32;
             audio.push(sample);
             let chunk_size = (sample_rate * 30) / 1000;
-            if speaking.load(Ordering::Relaxed) || stt_enabled.load(Ordering::Relaxed) {
+            if speaking.load(Ordering::Relaxed) || stt_disabled.load(Ordering::Relaxed) {
                 audio.clear();
                 speech_buffer.clear();
             }

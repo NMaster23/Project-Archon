@@ -11,7 +11,6 @@ pub enum TalosBus {
     Shutdown,
 }
 
-/// Messages flowing from the Client to the Server over WebSocket
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientToServer {
     VoiceTranscript(String),
@@ -22,7 +21,6 @@ pub enum ClientToServer {
     Ping,
 }
 
-/// Messages flowing from the Server to the Client over WebSocket
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerToClient {
     AiResponse(String),
@@ -40,4 +38,12 @@ pub enum ServerToClient {
 pub struct ToolDeclaration {
     pub name: String,
     pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SystemEvent {
+    BusEvent(TalosBus),
+    ClientEvent(ClientToServer),
+    ServerEvent(ServerToClient),
+    ToolsUpdate(Vec<ToolDeclaration>),
 }

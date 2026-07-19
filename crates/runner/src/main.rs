@@ -1,13 +1,10 @@
 use app_dirs2::{AppDataType, AppInfo, get_app_root};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::{thread, vec};
+use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
 use talos_ai::gemini_api;
 use talos_auth::{auth, get_auth};
-use talos_audio::stt;
 use talos_core::{ClientToServer, ServerToClient, TalosBus};
-use talos_ui::dashboard;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -15,32 +12,76 @@ const APP_INFO: AppInfo = AppInfo {
 };
 
 pub async fn start_server() -> anyhow::Result<()> {
+    let backend = "OAuth"; 
+    let use_api = backend == "API";
+    let api_key = if use_api {
+        println!("API selected, fetching auth...");
+        let _data_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+        if let Some(auth_data) = get_auth(None, 2).await {
+            Some(auth_data.data)
+        } else {
+            auth(None, "INSERT_API_KEY_OR_SECRET", None, None, 2).await;
+            println!("Created user_api.info with dummy data");
+            Some(get_auth(None, 2).await.unwrap().data)
+        }
+    } else {
+        println!("OAuth selected, using agy_communicate...");
+        None
+    };
+
     let listener = talos_transport::listen("0.0.0.0:9090").await?;
-    println!("Server is listening on port 9090 (Using AGY CLI mode)");
+    println!("Server is listening on port 9090");
+    let (bus_tx, _) = tokio::sync::broadcast::channel::<talos_core::SystemEvent>(100);
+    
+    let bus_tx_ui = bus_tx.clone();
     tokio::spawn(async move {
-        talos_ui::server_dashboard().await;
+        talos_ui::server_dashboard(bus_tx_ui).await;
     });
+
+    let api_key_arc = Arc::new(api_key);
+
     loop {
         let (stream, _) = listener.accept().await?;
         
+        let bus_tx_conn = bus_tx.clone();
+        let api_key_clone = api_key_arc.clone();
+
         tokio::spawn(async move {
             let mut conn = talos_transport::accept(stream).await.unwrap();
             conn.send_to_client(&ServerToClient::RequestToolRegistration).await.unwrap();
             let (tx_in, mut rx_in) = mpsc::unbounded_channel::<TalosBus>();
+            let (tx_out, rx_out) = mpsc::unbounded_channel::<TalosBus>();
+
+            let is_api = api_key_clone.is_some();
+            if let Some(key) = api_key_clone.as_ref() {
+                let tx_in_clone = tx_in.clone();
+                let key_str = key.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = gemini_api(&key_str, rx_out, tx_in_clone).await {
+                        eprintln!("Gemini session error: {:?}", e);
+                    }
+                });
+            }
+
             loop {
                 tokio::select! {
                     Ok(message) = conn.recv_from_client() => {
+                        let _ = bus_tx_conn.send(talos_core::SystemEvent::ClientEvent(message.clone()));
                         match message {
                             ClientToServer::VoiceTranscript(text) => {
                                 let processed = text.trim().to_string();
                                 if !processed.is_empty() {
                                     println!("User: {}", processed);
-                                    let tx_in_clone = tx_in.clone();
-                                    tokio::spawn(async move {
-                                        if let Err(e) = talos_ai::agy_communicate(true, tx_in_clone, &processed).await {
-                                            eprintln!("AGY CLI Error: {:?}", e);
-                                        }
-                                    });
+                                    if is_api {
+                                        let _ = tx_out.send(TalosBus::VoiceTranscript(processed));
+                                    } else {
+                                        let tx_in_clone = tx_in.clone();
+                                        tokio::spawn(async move {
+                                            if let Err(e) = talos_ai::agy_communicate(true, tx_in_clone, &processed).await {
+                                                eprintln!("AGY CLI Error: {:?}", e);
+                                            }
+                                        });
+                                    }
                                 }
                             }
                             ClientToServer::ToolRegistration { tools } => println!("Client registered tools {:?}", tools),
@@ -48,16 +89,15 @@ pub async fn start_server() -> anyhow::Result<()> {
                             _ => {}
                         }
                     }
-                    
-                    // Receive from AGY and forward to client
                     Some(ai_msg) = rx_in.recv() => {
+                        let _ = bus_tx_conn.send(talos_core::SystemEvent::BusEvent(ai_msg.clone()));
                         match ai_msg {
                             TalosBus::AiResponse(txt) => {
-                                println!("AGY: {}", txt);
+                                println!("AI: {}", txt);
                                 let _ = conn.send_to_client(&ServerToClient::AiResponse(txt)).await;
                             }
                             TalosBus::TerminalOutput(txt) => {
-                                println!("AGY Terminal: {}", txt);
+                                println!("Terminal: {}", txt);
                                 let _ = conn.send_to_client(&ServerToClient::TerminalOutput(txt)).await;
                             }
                             _ => {}
@@ -69,15 +109,16 @@ pub async fn start_server() -> anyhow::Result<()> {
     }
 }
 
-pub async fn run_client() -> anyhow::Result<()> {
+pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     tokio::spawn(async move {
         if let Err(e) = talos_executor::tools().await {
             eprintln!("Critical Error: {:?}", e);
         }
     });
+    let ws_url = format!("ws://{}", server_addr);
     let mut conn = tokio::time::timeout(std::time::Duration::from_secs(60), async {
         loop {
-            match talos_transport::connect("ws://127.0.0.1:9090").await {
+            match talos_transport::connect(&ws_url).await {
                 Ok(c) => break c,
                 Err(_) => {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -88,13 +129,13 @@ pub async fn run_client() -> anyhow::Result<()> {
     let (stt_tx, mut stt_rx) = mpsc::unbounded_channel::<TalosBus>();
     let (ui_tx, ui_rx) = mpsc::unbounded_channel::<String>();
     
-    let stt_enabled = Arc::new(AtomicBool::new(true));
-    let stt_enabled_ui = stt_enabled.clone();
+    let stt_disabled = Arc::new(AtomicBool::new(false));
+    let stt_disabled_ui = stt_disabled.clone();
     tokio::spawn(async move {
-        dashboard(stt_enabled_ui, ui_rx).await;
+        talos_ui::client_backend(stt_disabled_ui, ui_rx).await;
     });
     std::thread::spawn(move || {
-        talos_audio::stt(stt_tx, Arc::new(AtomicBool::new(false)), stt_enabled)
+        talos_audio::stt(stt_tx, Arc::new(AtomicBool::new(false)), stt_disabled)
     });
     
     loop {
@@ -130,105 +171,11 @@ async fn main() {
     if args.len() > 1 && args[1] == "server" {
         start_server().await.unwrap();
         return;
-    } else if args.len() > 1 && args[1] == "client" {
-        run_client().await.unwrap();
-        return;
     }
-
-    let data_path = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
-    let completed = Arc::new(AtomicBool::new(false));
-    let completed_clone = completed.clone();
-    let speaking = Arc::new(AtomicBool::new(false));
-    let speaking_clone = speaking.clone();
-    let backend = "OAuth"; 
-    let use_api = backend == "API";
-    let oauth_or_api = Arc::new(AtomicBool::new(use_api));
-    let stt_enabled = Arc::new(AtomicBool::new(true));
-    let stt_enabled_clone = stt_enabled.clone();
-    let (start_tx, start_rx) = tokio::sync::oneshot::channel();
-    start_tx.send(()).unwrap();
-    let (tx_out, mut rx_out) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
-    let (tx_in, mut rx_in) = tokio::sync::mpsc::unbounded_channel::<TalosBus>();
-    let tx_out_stt = tx_out.clone();
-    let (ui_tx, ui_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    
-    tokio::spawn(async move {
-        dashboard(stt_enabled, ui_rx).await;
-    });
-    thread::spawn(move || {
-        stt(tx_out_stt, speaking_clone, stt_enabled_clone);
-    });
-    
-    let _ = start_rx.await;
-    
-    if oauth_or_api.load(Ordering::Relaxed) {
-        println!("API selected, using gemini_api...");
-        let user_data = Some(
-            if let Some(auth_data) = get_auth(2).await {
-                completed_clone.store(true, Ordering::Relaxed);
-                auth_data
-            } else {
-                auth("INSERT_API_KEY_OR_SECRET", 2).await;
-                completed_clone.store(true, Ordering::Relaxed);
-                println!("Created user_api.info with dummy data");
-                get_auth(2).await.unwrap()
-            },
-        );
-        if completed.load(Ordering::Relaxed) {
-            let data = user_data.expect("API data should be initialized");
-            let ui_tx_api = ui_tx.clone();
-            tokio::spawn(async move {
-                while let Some(msg) = rx_in.recv().await {
-                    match msg {
-                        TalosBus::TerminalOutput(txt) => {
-                            let _ = ui_tx_api.send(txt);
-                        }
-                        TalosBus::AiResponse(txt) => {
-                            let _ = ui_tx_api.send(txt);
-                        }
-                        _ => {
-                            eprintln!("[Runner] Ignoring message type");
-                        }
-                    }
-                }
-            });
-            if let Err(e) = gemini_api(data.data.as_str(), rx_out, tx_in).await {
-                eprintln!("Gemini session error: {:?}", e);
-            }
-        }
+    let server_address = if args.len() > 2 {
+        args[2].clone()
     } else {
-        println!("OAuth selected, using agy_communicate...");
-        completed_clone.store(true, Ordering::Relaxed);
-        let ui_tx_oauth = ui_tx.clone();
-        tokio::spawn(async move {
-            while let Some(msg) = rx_in.recv().await {
-                match msg {
-                    TalosBus::TerminalOutput(txt) => {
-                        let _ = ui_tx_oauth.send(txt);
-                    }
-                    TalosBus::AiResponse(txt) => {
-                        let _ = ui_tx_oauth.send(txt);
-                    }
-                    _ => {}
-                }
-            }
-        });
-        while let Some(event) = rx_out.recv().await {
-            match event {
-                TalosBus::VoiceTranscript(speech) => {
-                    let processed = speech.trim().to_string();
-                    if !processed.is_empty() {
-                        let _ = ui_tx.send(format!("You: {}", processed));
-                        let tx_in_clone = tx_in.clone();
-                        tokio::spawn(async move {
-                            if let Err(e) = talos_ai::agy_communicate(true, tx_in_clone, &processed).await {
-                                eprintln!("[OAuth] AGY Error: {:?}", e);
-                            }
-                        });
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
+        "127.0.0.1:9090".to_string()
+    };
+    run_client(&server_address).await.unwrap();
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import LoginPage, { Logo, Username, Password, Input } from '@react-login-page/page1';
+import LoginPage, { Logo, Password, Input } from '@react-login-page/page1';
 import LoginLogo from 'react-login-page/logo-rect';
 
 interface SignUpProps {
@@ -14,16 +14,26 @@ const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const enteredEmail = formData.get('username') as string;
-    
+    const enteredEmail = formData.get('email') as string;
+    const enteredPassword = formData.get('password') as string;
+    const enteredUserName = formData.get('username') as string;
+
+    if (!enteredUserName) return;
+
     if (!enteredEmail) return;
     setEmail(enteredEmail);
+
+    if (!enteredPassword) return;
 
     try {
       const response = await fetch('/api/2fa/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: enteredEmail }),
+        body: JSON.stringify({
+          username: enteredUserName,
+          email: enteredEmail,
+          password: enteredPassword,
+        }),
       });
 
       if (response.ok) {
@@ -115,9 +125,9 @@ const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
         <Logo>
           <LoginLogo />
         </Logo>
-        <Username name="username" index={3} />
-        <Password name="password" index={2} />
-        <Input name="phone" index={1} placeholder="Phone number" />
+        <Input name="username" index={1} placeholder="Username" />
+        <Input name="email" index={2} placeholder="Email Address" />
+        <Password name="password" index={3} />
       </LoginPage>
     </form>
   );

@@ -25,31 +25,97 @@ import SignIn from './SignIn';
 import SignUp from './SignUp';
 
 export default function App() {
-  const [isSignedIn] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const isSidebarVisible = activeIndex !== null && activeIndex >= 0 && activeIndex <= 11;
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [chatHistory, setChatHistory] = useState<string[]>([]);
+  const [clientHistory, setClientHistory] = useState<string[]>([]);
+  const [serverHistory, setServerHistory] = useState<string[]>([]);
+  const [toolHistory, setToolHistory] = useState<string[]>([]);
+  const failCountRef = useRef(0);
+  const MAX_RETRIES = 100;
 
   useEffect(() => {
-    fetch('/api/status')
-      .then(res => res.json())
-      .then(data => setServerStatus(data))
-      .catch(err => console.error("Failed to fetch from rust backend:", err));
-    const backend_fetch_timer = setInterval(() => {
+    const checkServer = () => {
       fetch('/api/status')
-        .then(res => res.json())
-        .then(data => setServerStatus(data))
-        .catch(err => console.error("Failed to fetch from rust backend:", err));
-    }, 5000);
+        .then(res => {
+          if (!res.ok) throw new Error("Network response was not ok");
+          return res.json();
+        })
+        .then(data => {
+          setServerStatus(data);
+          failCountRef.current = 0; 
+        })
+        .catch(err => {
+          console.error("Failed to fetch from rust backend:", err);
+          failCountRef.current += 1;
+
+          if (failCountRef.current > MAX_RETRIES) {
+            alert("Unable to connect to the backend after multiple attempts. Please check your server and attempt to reload this page.");
+          }
+        });
+    };
+
+    checkServer();
+    const backend_fetch_timer = setInterval(checkServer, 5000);
 
     return () => clearInterval(backend_fetch_timer);
   }, []);
 
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/talosbus`;
+    const socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      console.log('✅ Connected to TalosBus');
+      socket.send('Hello from the frontend!');
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('📥 TalosBus Data Received:', data);
+        
+        if (data.BusEvent) {
+          const busData = data.BusEvent;
+          if (busData.TerminalOutput) {
+            setChatHistory(prev => [...prev, `Talos: ${busData.TerminalOutput}`]);
+          } else if (busData.AiResponse) {
+            setChatHistory(prev => [...prev, `Talos: ${busData.AiResponse}`]);
+          } else if (busData.VoiceTranscript) {
+            setChatHistory(prev => [...prev, `You: ${busData.VoiceTranscript}`]);
+          }
+        } else if (data.ClientEvent) {
+          setClientHistory(prev => [...prev, `Client Event: ${JSON.stringify(data.ClientEvent)}`]);
+        } else if (data.ServerEvent) {
+          setServerHistory(prev => [...prev, `Server Event: ${JSON.stringify(data.ServerEvent)}`]);
+        } else if (data.ToolsUpdate) {
+          setToolHistory(prev => [...prev, `Tools Update: ${JSON.stringify(data.ToolsUpdate)}`]);
+        }
+      } catch (e) {
+        setChatHistory(prev => [...prev, event.data]);
+        console.log('📥 TalosBus Data (Text):', event.data);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error('❌ TalosBus WebSocket Error:', error);
+    };
+
+    socket.onclose = () => {
+      console.log('🔌 Disconnected from TalosBus');
+    };
+
+    return () => socket.close();
+  }, []);
+
   const renderContent = () => {
     switch (activeIndex) {
-      case 0: return <Page1 />;
+      case 0: return <Page1 clientHistory={clientHistory} serverHistory={serverHistory} toolHistory={toolHistory} />;
       case 1: return <Page2 />;
-      case 2: return <Page3 />;
+      case 2: return <Page3 chatHistory={chatHistory} />;
       case 3: return <Page4 />;
       case 4: return <Page5 />;
       case 5: return <Page6 />;
@@ -173,13 +239,30 @@ export default function App() {
         />
       </div>
       <div className="absolute inset-0 z-10 pointer-events-none">
-        <div className={`pointer-events-auto w-full h-full ${isSignedIn ? 'pl-[20rem]' : ''}`}>
+        <div className={`pointer-events-auto w-full h-full ${isSidebarVisible ? 'pl-[20rem]' : ''}`}>
           {renderContent()}
         </div>
       </div>
-      {isSignedIn && (
+      {isSidebarVisible && (
         <div className="absolute top-1/2 left-16 -translate-y-1/2 z-20">
-          <LineSidebar onItemClick={(index: number) => setActiveIndex(index)} />
+          <LineSidebar 
+            items={[
+              'Dashboard',
+              'Server Status',
+              'Talos AI Core',
+              'TalosBus Network',
+              'Access Control',
+              'Security Logs',
+              'Voice Interface',
+              'Telemetry',
+              'System Events',
+              'Database',
+              'Integrations',
+              'Settings'
+            ]}
+            defaultActive={activeIndex} 
+            onItemClick={(index: number) => setActiveIndex(index)} 
+          />
         </div>
       )}
     </div>
