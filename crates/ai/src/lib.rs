@@ -6,11 +6,18 @@ use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use std::fs;
 use std::io::Read;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::string::ToString;
 use std::time::Duration;
 use talos_core::TalosBus;
 use tokio::sync::mpsc;
+use app_dirs2::{AppDataType, AppInfo, get_app_root};
+
+const APP_INFO: AppInfo = AppInfo {
+    name: "Talos",
+    author: "NMCreator",
+};
 
 pub struct StreamingSource {
     receiver: std::sync::mpsc::Receiver<f32>,
@@ -268,7 +275,12 @@ Operational Directives & Safety Rules
     Chain Actions Logically: You can request multiple terminal/file actions in one instruction when they belong together.
 
     Destructive Actions: If a user asks you to delete files, format drives, or run potentially dangerous commands, ask for confirmation before issuing the AGY instruction."#;
-
+    let executor_tools = executor::gemini_api_mcp().await;
+    let gemini_tools = vec![gemini_live::Tool::FunctionDeclarations(
+        executor_tools.into_iter().map(|raw| {
+            serde_json::from_value(raw).unwrap()
+        }).collect()
+    )];
     let session = Session::connect(SessionConfig {
         transport: TransportConfig {
             auth: Auth::ApiKey(api_key.to_string()),
@@ -276,6 +288,7 @@ Operational Directives & Safety Rules
         },
         setup: SetupConfig {
             model: "models/gemini-3.1-flash-live-preview".into(),
+            tools: Some(gemini_tools),
             system_instruction: Some(gemini_live::Content {
                 parts: vec![gemini_live::Part {
                     text: Some(ai_management_prompt.to_string()),
@@ -359,4 +372,10 @@ pub async fn agy_communicate(
     }
     
     Ok(())
+}
+
+pub async fn create_config() {
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+    let config_file = app_root.join("config.json");
+    fs::write(config_file, talos_core::CONFIG_TEMPLATE).unwrap();
 }

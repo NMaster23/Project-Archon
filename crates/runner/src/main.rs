@@ -12,7 +12,9 @@ const APP_INFO: AppInfo = AppInfo {
 };
 
 pub async fn start_server() -> anyhow::Result<()> {
-    let backend = "OAuth"; 
+    let config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config.json");
+    let config = talos_core::TalosConfig::load(&config_path, talos_ai::CONFIG_TEMPLATE);
+    let backend = config.backend.clone();
     let use_api = backend == "API";
     let api_key = if use_api {
         println!("API selected, fetching auth...");

@@ -25,6 +25,70 @@ const TOOLS: &[(&str, &str)] = &[
     ("view_screen", "Capture the screen and return it as an image to view"),
 ];
 
+const API_TOOLS: &str = r#"[
+  {
+    "name": "cursor_move",
+    "description": "Move the cursor on screen",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      },
+      "required": ["x", "y"]
+    }
+  },
+  {
+    "name": "mouse_click",
+    "description": "Click left (1), right (2), or middle (3) mouse button",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "button": { "type": "integer" }
+      },
+      "required": ["button"]
+    }
+  },
+  {
+    "name": "mouse_scroll",
+    "description": "Scroll mouse wheel vertically",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "lines": { "type": "integer" }
+      },
+      "required": ["lines"]
+    }
+  },
+  {
+    "name": "key_press",
+    "description": "Press a specific key or combination",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "keys": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["keys"]
+    }
+  },
+  {
+    "name": "key_type",
+    "description": "Type a full string of text",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" }
+      },
+      "required": ["text"]
+    }
+  },
+  {
+    "name": "view_screen",
+    "description": "Capture the screen and return it as an image to view",
+    "parameters": { "type": "object", "properties": {} }
+  }
+]"#;
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CursorMoveInput {
     pub x: i32,
@@ -342,4 +406,8 @@ pub async fn mcp_setup() {
         let updated_json = serde_json::to_string_pretty(&config).expect("Failed to create json");
         fs::write(config_path, &updated_json).expect("Failed to save json");
     }
+}
+
+pub async fn gemini_api_mcp() -> Vec<serde_json::Value> {
+    serde_json::from_str(API_TOOLS).expect("Failed to parse json")
 }

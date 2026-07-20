@@ -13,9 +13,12 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use rust_embed::RustEmbed;
 use tokio::sync::mpsc;
 use notify_rust::{Notification, Timeout};
+use talos_core::TalosConfig;
+use app_dirs2::{AppDataType, AppInfo, get_app_root};
 
 const ICON_ENABLED_BYTES: &[u8] = include_bytes!("..\\..\\..\\assets\\Icon.png");
 const ICON_DISABLED_BYTES: &[u8] = include_bytes!("..\\..\\..\\assets\\Icon_Disabled.png");
+const APP_INFO: AppInfo = AppInfo { name: "Talos", author: "NMCreator" };
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct ServerStatus {
@@ -119,85 +122,16 @@ async fn static_handler(uri: Uri) -> Response {
     }
 }
 
-const DEFAULT_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-pub struct Spinner {
-    frames: &'static [&'static str],
-    index: usize,
-    last_tick: Instant,
-    tick_rate: Duration,
+pub async fn get_config() -> Json<TalosConfig> {
+    let config_dir = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+    let config = TalosConfig::load(&config_dir.join("config.json"), talos_core::CONFIG_TEMPLATE);
+    Json(config)
 }
 
-impl Spinner {
-    pub fn new(tick_rate_ms: u64) -> Self {
-        Self {
-            frames: DEFAULT_FRAMES,
-            index: 0,
-            last_tick: Instant::now(),
-            tick_rate: Duration::from_millis(tick_rate_ms),
-        }
-    }
-    pub fn with_custom_frames(tick_rate_ms: u64, frames: &'static [&'static str]) -> Self {
-        Self {
-            frames,
-            index: 0,
-            last_tick: Instant::now(),
-            tick_rate: Duration::from_millis(tick_rate_ms),
-        }
-    }
-    pub fn update(&mut self) {
-        if self.last_tick.elapsed() >= self.tick_rate {
-            self.index = (self.index + 1) % self.frames.len();
-            self.last_tick = Instant::now();
-        }
-    }
-    pub fn frame(&self) -> &str {
-        self.frames[self.index]
-    }
-    pub fn reset(&mut self) {
-        self.index = 0;
-        self.last_tick = Instant::now();
-    }
-}
-
-struct FadeUI {
-    start_time: Instant,
-}
-
-impl FadeUI {
-    fn new() -> Self {
-        Self {
-            start_time: Instant::now(),
-        }
-    }
-}
-
-impl eframe::App for FadeUI {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let elapsed = self.start_time.elapsed().as_secs_f32();
-        let duration = 2.0;
-        let alpha_factor = (1.0 - (elapsed / duration)).clamp(0.0, 1.0);
-
-        if alpha_factor <= 0.0 {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            return;
-        }
-
-        let bg_alpha = (150.0 * alpha_factor) as u8;
-        let frame = egui::Frame::none().fill(egui::Color32::from_black_alpha(bg_alpha));
-        
-        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
-            ui.centered_and_justified(|ui| {
-                let text_alpha = (255.0 * alpha_factor) as u8;
-                ui.colored_label(
-                    egui::Color32::from_white_alpha(text_alpha),
-                    egui::RichText::new("Alt + M Pressed!").size(32.0)
-                );
-            });
-        });
-
-        ctx.request_repaint();
-    }
+pub async fn update_config(Json(new_config): Json<TalosConfig>) -> axum::http::StatusCode {
+    let config_dir = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+    new_config.save(&config_dir.join("config.json"));
+    axum::http::StatusCode::OK
 }
 
 pub async fn client_backend(stt_disabled: Arc<AtomicBool>, ui_rx: tokio::sync::mpsc::UnboundedReceiver<String>) {
@@ -265,6 +199,9 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
         .route("/api/2fa/verify", post(talos_auth::totp_verify_handler))
         .route("/api/2fa/login", post(talos_auth::totp_login_handler))
         .route("/api/password/login", post(talos_auth::password_login_handler))
+        .route("/api/config", get(get_config).post(update_config))
+        .route("/api/status", get(get_server_status))
+        .route("/api/status", get(get_server_status))
         .fallback(static_handler)
         .with_state(state);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.unwrap();

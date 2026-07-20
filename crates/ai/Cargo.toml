@@ -17,4 +17,4 @@ rodio = "0.22.2"
 rust-mcp-sdk = "0.10.0"
 ui = { path = "../ui", package = "ui" }
 async-trait = "0.1.89"
-# TODO: Add mcp dependencies here
+app_dirs2 = "2.5.5"
