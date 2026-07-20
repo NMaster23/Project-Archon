@@ -49,6 +49,7 @@ const SignIn2: React.FC<SignInProps> = ({ setActiveIndex }) => {
         placeholder="Password" 
         onChange={(e) => setPassword(e.target.value)} 
       />
+      <a href="#" onClick={(e) => { e.preventDefault(); setActiveIndex(13); }} style={{textDecoration: 'underline'}}>Sign-in with Code</a>
       <Submit>Log In</Submit>
     </LoginPage>
     </form>

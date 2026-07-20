@@ -22,6 +22,7 @@ import Page11 from './Page11';
 import Page12 from './Page12';
 
 import SignIn from './SignIn';
+import SignIn2 from './SignIn2';
 import SignUp from './SignUp';
 
 export default function App() {
@@ -127,6 +128,7 @@ export default function App() {
       case 11: return <Page12 />;
       case 12: return <SignUp setActiveIndex={setActiveIndex} />;
       case 13: return <SignIn setActiveIndex={setActiveIndex} />;
+      case 14: return <SignIn2 setActiveIndex={setActiveIndex} />;
       default:
         return (
           <>

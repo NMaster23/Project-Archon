@@ -35,22 +35,21 @@ const SignIn: React.FC<SignInProps> = ({ setActiveIndex }) => {
   return (
     <form onSubmit={handleLogin} style={{ height: '100%' }}>
       <LoginPage style={{ height: 580 }}>
-      <Logo>
-        <LoginLogo />
-      </Logo>
-      <Title>Talos Login</Title>
-      <Username 
-        name="email" 
-        placeholder="Email address" 
-        onChange={(e) => setEmail(e.target.value)} 
-      />
-      <Password 
-        name="totpCode" 
-        placeholder="6-digit 2FA Code" 
-        onChange={(e) => setTotpCode(e.target.value)} 
-      />
-      <Submit>Log In</Submit>
-    </LoginPage>
+        <Logo>
+          <LoginLogo />
+        </Logo>
+        <Title>Talos Login</Title>
+        <Username
+          name="email"
+          placeholder="Email address"
+          onChange={(e) => setEmail(e.target.value)} />
+        <Password
+          name="totpCode"
+          placeholder="6-digit 2FA Code"
+          onChange={(e) => setTotpCode(e.target.value)} />
+        <a href="#" onClick={(e) => { e.preventDefault(); setActiveIndex(14); }} style={{textDecoration: 'underline'}}>Sign-in with Password</a>
+        <Submit>Log In</Submit>
+      </LoginPage>
     </form>
   );
 };
