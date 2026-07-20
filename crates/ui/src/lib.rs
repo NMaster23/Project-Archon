@@ -200,8 +200,6 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
         .route("/api/2fa/login", post(talos_auth::totp_login_handler))
         .route("/api/password/login", post(talos_auth::password_login_handler))
         .route("/api/config", get(get_config).post(update_config))
-        .route("/api/status", get(get_server_status))
-        .route("/api/status", get(get_server_status))
         .fallback(static_handler)
         .with_state(state);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.unwrap();
