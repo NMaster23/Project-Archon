@@ -16,3 +16,4 @@ talos-plugins = { path = "../plugins", package = "plugins" }
 talos-ui = { path = "../ui", package = "ui" }
 talos-transport = { path = "../transport", package = "transport" }
 app_dirs2 = "2.5.5"
+notify-rust = "4.18.0"

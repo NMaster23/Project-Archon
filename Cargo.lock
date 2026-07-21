@@ -6899,6 +6899,7 @@ dependencies = [
  "core",
  "executor",
  "log",
+ "notify-rust",
  "plugins",
  "tokio",
  "transport",

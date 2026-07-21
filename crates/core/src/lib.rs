@@ -83,6 +83,7 @@ pub const CONFIG_TEMPLATE: &str = r#"{
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TalosConfig {
+    pub ai_permissions: Vec<String>,
     pub backend: String,
     pub dashboard_port: u16,
     pub run_in_background: bool,

@@ -134,11 +134,16 @@ pub async fn update_config(Json(new_config): Json<TalosConfig>) -> axum::http::S
     axum::http::StatusCode::OK
 }
 
-pub async fn client_backend(stt_disabled: Arc<AtomicBool>, ui_rx: tokio::sync::mpsc::UnboundedReceiver<String>) {
+pub fn get_icon_paths() -> (std::path::PathBuf, std::path::PathBuf) {
     let icon_enabled_path = env::temp_dir().join("icon.png");
     let icon_disabled_path = env::temp_dir().join("icon_disabled.png");
-    fs::write(&icon_enabled_path, ICON_ENABLED_BYTES).unwrap();
-    fs::write(&icon_disabled_path, ICON_DISABLED_BYTES).unwrap();
+    let _ = fs::write(&icon_enabled_path, ICON_ENABLED_BYTES);
+    let _ = fs::write(&icon_disabled_path, ICON_DISABLED_BYTES);
+    (icon_enabled_path, icon_disabled_path)
+}
+
+pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: tokio::sync::mpsc::UnboundedReceiver<String>) {
+    let (icon_enabled_path, icon_disabled_path) = get_icon_paths();
     let (tx, mut rx) = mpsc::unbounded_channel();
     let alt_held = Arc::new(AtomicBool::new(false));
     let alt_held_clone = alt_held.clone();

@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 use talos_ai::gemini_api;
 use talos_auth::{auth, get_auth};
 use talos_core::{ClientToServer, ServerToClient, TalosBus};
+use notify_rust::{Notification, Timeout};
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -112,6 +113,15 @@ pub async fn start_server() -> anyhow::Result<()> {
 }
 
 pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
+    let config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config.json");
+    let config = talos_core::TalosConfig::load(&config_path, talos_core::CONFIG_TEMPLATE);
+    let (icon_enabled_path, _) = talos_ui::get_icon_paths();
+    Notification::new()
+        .summary("Microphone Unmuted")
+        .body("Voice Control and STT Available. (Alt+M to Disable)")
+        .icon(icon_enabled_path.to_str().unwrap_or(""))
+        .timeout(Timeout::Milliseconds(6000))
+        .show().ok();
     tokio::spawn(async move {
         if let Err(e) = talos_executor::tools().await {
             eprintln!("Critical Error: {:?}", e);
@@ -130,7 +140,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     }).await.map_err(|_| anyhow::anyhow!("Timed out waiting for client to initialize"))?;
     let (stt_tx, mut stt_rx) = mpsc::unbounded_channel::<TalosBus>();
     let (ui_tx, ui_rx) = mpsc::unbounded_channel::<String>();
-    
+
     let stt_disabled = Arc::new(AtomicBool::new(false));
     let stt_disabled_ui = stt_disabled.clone();
     tokio::spawn(async move {

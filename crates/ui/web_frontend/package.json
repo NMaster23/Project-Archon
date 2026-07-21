@@ -12,10 +12,13 @@
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@fontsource-variable/geist": "^5.2.9",
+    "@heroui/react": "^3.2.2",
+    "@heroui/styles": "^3.2.2",
     "@react-login-page/page1": "^1.0.6",
     "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "ldrs": "^1.1.9",
     "liquid-glass-react": "^1.1.1",
     "lucide-react": "^1.24.0",
     "react": "^19.2.7",
