@@ -6,7 +6,7 @@ use crossterm::{
 };
 use ratatui::{Frame, Terminal, backend::CrosstermBackend};
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::{env, fs};
 use std::path::PathBuf;
 use tui_prompts::{Prompt, State, Status, TextPrompt, TextRenderStyle, TextState};
 use totp_rs::{Algorithm, TOTP, Secret};
@@ -18,12 +18,18 @@ use axum::Json;use axum::http::StatusCode;
 use cocoon::Cocoon;
 use rand::{rngs::OsRng, RngCore};
 use totp_rs::qrcodegen_image::image::EncodableLayout;
+use signed_tokens::SigningKey;
 
 #[derive(Clone)]
 pub struct UserData {
     pub secret: String,
     pub username: String,
     pub password: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct LoginResponse {
+    pub token: String,
 }
 
 #[derive(Clone)]
@@ -88,7 +94,7 @@ impl<'a> App<'a> {
 }
 
 pub async fn auth(email: Option<&str>, input: &str, username: Option<&str>, password: Option<&str>, case: i32) {
-    let proj_dirs = ProjectDirs::from("com", "NMaster23", "Talos").expect("Could not find project directories");
+    let proj_dirs = ProjectDirs::from("com", "NMCreator", "Talos").expect("Could not find project directories");
     let config_dir = proj_dirs.config_dir();
     fs::create_dir_all(config_dir).unwrap();
     let entry = keyring::Entry::new("Talos", "encryption_key").unwrap();
@@ -121,7 +127,7 @@ pub async fn auth(email: Option<&str>, input: &str, username: Option<&str>, pass
 }
 
 pub async fn get_auth(email: Option<&str>, case: i32) -> Option<AuthData> {
-    let proj_dirs = ProjectDirs::from("com", "NMaster23", "Talos")?;
+    let proj_dirs = ProjectDirs::from("com", "NMCreator", "Talos")?;
     let config_dir = proj_dirs.config_dir();
     let file_path = match case {
         1 => {
@@ -138,6 +144,22 @@ pub async fn get_auth(email: Option<&str>, case: i32) -> Option<AuthData> {
     let mut cocoon = Cocoon::new(&password);
     let decrypted = cocoon.unwrap(&encrypted).ok()?;
     serde_json::from_slice(&decrypted).ok()
+}
+
+pub async fn issue_session_token(email: &str) -> String {
+    let keyring_entry = keyring::Entry::new("Talos", "session_signing_key").unwrap();
+    let keyring_string = keyring_entry.get_password().unwrap();
+    let signing_key = SigningKey::new(keyring_string.as_bytes());
+    let token = signed_tokens::sign(email.as_bytes(), &[signing_key]).unwrap();
+    token.to_string()
+}
+
+pub async fn verify_session_token(token: &str) -> Option<String> {
+    let key = keyring::Entry::new("Talos", "session_signing_key").unwrap().get_password().unwrap();
+    let signing_key = SigningKey::new(key.as_bytes());
+    let verified_token = signed_tokens::verify(&token, &[signing_key]).unwrap();
+    let session_id = verified_token.payload();
+    Some(std::str::from_utf8(session_id).unwrap().to_string())
 }
 
 pub async fn totp_setup(email: &str) -> SetupResponse {
@@ -191,7 +213,7 @@ pub async fn totp_setup_handler(
 pub async fn totp_verify_handler(
     AxumState(state): AxumState<AuthState>,
     Json(payload): Json<VerifyRequest>,
-) -> Result<Json<bool>, StatusCode> {
+) -> Result<Json<LoginResponse>, StatusCode> {
     let user_data_opt = {
         let pending = state.pending_totp.read().unwrap();
         pending.get(&payload.email).cloned()
@@ -203,7 +225,8 @@ pub async fn totp_verify_handler(
             if let Ok(mut pending) = state.pending_totp.write() {
                 pending.remove(&payload.email);
             }
-            Ok(Json(true))
+            let generated_token = issue_session_token(&payload.email).await;
+            Ok(Json(LoginResponse { token: generated_token }))
         } else {
             Err(StatusCode::UNAUTHORIZED)
         }

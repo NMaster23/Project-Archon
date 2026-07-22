@@ -1,11 +1,11 @@
 use app_dirs2::{AppDataType, AppInfo, get_app_root};
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
 use talos_ai::gemini_api;
 use talos_auth::{auth, get_auth};
 use talos_core::{ClientToServer, ServerToClient, TalosBus};
 use notify_rust::{Notification, Timeout};
+use std::sync::{Arc, RwLock};
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -14,8 +14,9 @@ const APP_INFO: AppInfo = AppInfo {
 
 pub async fn start_server() -> anyhow::Result<()> {
     let config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config.json");
-    let config = talos_core::TalosConfig::load(&config_path, talos_core::CONFIG_TEMPLATE);
-    let backend = config.backend.clone();
+    let config_val = talos_core::TalosConfig::load(&config_path, talos_core::CONFIG_TEMPLATE);
+    let config = Arc::new(RwLock::new(config_val));
+    let backend = config.read().unwrap().backend.clone();
     let use_api = backend == "API";
     let api_key = if use_api {
         println!("API selected, fetching auth...");
@@ -38,7 +39,7 @@ pub async fn start_server() -> anyhow::Result<()> {
     
     let bus_tx_ui = bus_tx.clone();
     tokio::spawn(async move {
-        talos_ui::server_dashboard(bus_tx_ui).await;
+        talos_ui::server_dashboard(bus_tx_ui, config.clone()).await;
     });
 
     let api_key_arc = Arc::new(api_key);
@@ -114,7 +115,7 @@ pub async fn start_server() -> anyhow::Result<()> {
 
 pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     let config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config.json");
-    let config = talos_core::TalosConfig::load(&config_path, talos_core::CONFIG_TEMPLATE);
+    let config = Arc::new(RwLock::new(talos_core::TalosConfig::load(&config_path, talos_core::CONFIG_TEMPLATE)));
     let (icon_enabled_path, _) = talos_ui::get_icon_paths();
     Notification::new()
         .summary("Microphone Unmuted")
@@ -144,7 +145,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     let stt_disabled = Arc::new(AtomicBool::new(false));
     let stt_disabled_ui = stt_disabled.clone();
     tokio::spawn(async move {
-        talos_ui::client_backend(stt_disabled_ui, ui_rx).await;
+        talos_ui::client_backend(stt_disabled_ui, ui_rx, config.clone()).await;
     });
     std::thread::spawn(move || {
         talos_audio::stt(stt_tx, Arc::new(AtomicBool::new(false)), stt_disabled)

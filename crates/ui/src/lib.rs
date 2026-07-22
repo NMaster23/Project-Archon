@@ -35,6 +35,7 @@ struct AppState {
     start_time: Instant,
     auth_state: talos_auth::AuthState,
     bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>,
+    config: Arc<std::sync::RwLock<TalosConfig>>,
 }
 
 impl axum::extract::FromRef<AppState> for talos_auth::AuthState {
@@ -122,15 +123,16 @@ async fn static_handler(uri: Uri) -> Response {
     }
 }
 
-pub async fn get_config() -> Json<TalosConfig> {
-    let config_dir = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
-    let config = TalosConfig::load(&config_dir.join("config.json"), talos_core::CONFIG_TEMPLATE);
-    Json(config)
+pub async fn get_config(State(state): State<AppState>) -> Json<TalosConfig> {
+    Json(state.config.read().unwrap().clone())
 }
 
-pub async fn update_config(Json(new_config): Json<TalosConfig>) -> axum::http::StatusCode {
+pub async fn update_config(State(state): State<AppState>, Json(new_config): Json<TalosConfig>) -> axum::http::StatusCode {
     let config_dir = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
     new_config.save(&config_dir.join("config.json"));
+    if let Ok(mut live_config) = state.config.write() {
+        *live_config = new_config;
+    }
     axum::http::StatusCode::OK
 }
 
@@ -142,7 +144,7 @@ pub fn get_icon_paths() -> (std::path::PathBuf, std::path::PathBuf) {
     (icon_enabled_path, icon_disabled_path)
 }
 
-pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: tokio::sync::mpsc::UnboundedReceiver<String>) {
+pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: tokio::sync::mpsc::UnboundedReceiver<String>, config: Arc<std::sync::RwLock<TalosConfig>>) {
     let (icon_enabled_path, icon_disabled_path) = get_icon_paths();
     let (tx, mut rx) = mpsc::unbounded_channel();
     let alt_held = Arc::new(AtomicBool::new(false));
@@ -191,11 +193,12 @@ pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: tokio::sync::
 
 
 
-pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>) {
+pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>, config: Arc<std::sync::RwLock<TalosConfig>>) {
     let state = AppState {
         start_time: Instant::now(),
         auth_state: talos_auth::AuthState::new(),
         bus_tx,
+        config,
     };
     let app = Router::new()
         .route("/api/status", get(get_server_status))
