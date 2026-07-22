@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuthStore } from './authStore';
 import LoginPage, { Logo, Username, Password, Submit, Title } from '@react-login-page/page1';
 import LoginLogo from 'react-login-page/logo-rect';
 
@@ -20,6 +21,14 @@ const SignIn: React.FC<SignInProps> = ({ setActiveIndex }) => {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        useAuthStore.getState().addAccount({ 
+          username: email.split('@')[0],
+          email: email, 
+          secret: '',
+          sessionToken: data.token || data.sessionToken
+        });
+
         console.log("Login successful!");
         alert("Success! You are logged in.");
         setActiveIndex(0); 
