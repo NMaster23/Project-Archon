@@ -1,8 +1,39 @@
 package archon:plugin;
 
-world tool {
-  export manifest: func() -> string;
-  export execute: func(tool-name: string, args-json: string) -> string;
-  import log: func(msg: string);
-  import render-widget: func(id: string, layout-json: string);
+interface host-capabilities {
+    emit-trace: func(span-id: string, metrics-json: string);
+    fetch-external: func(url: string, headers-json: string, body: string) -> result<string, string>;
+    db-set: func(key: string, value: string) -> result<bool, string>;
+    db-get: func(key: string) -> result<option<string>, string>;
+}
+
+interface channel-provider {
+    poll-messages: func() -> list<string>;
+    send-message: func(recipient: string, text: string) -> result<bool, string>;
+}
+
+interface memory-engine {
+    store-context: func(session-id: string, data: string) -> result<bool, string>;
+    retrieve-context: func(query: string, limit: u32) -> result<list<string>, string>;
+}
+
+interface model-provider {
+    generate-completion: func(prompt: string) -> result<string, string>;
+}
+
+interface security-policy {
+    sanitize-input: func(raw-input: string) -> result<string, string>;
+    validate-output: func(llm-output: string) -> result<string, string>;
+}
+
+world archon-extension {
+    import host-capabilities;
+    import log: func(msg: string);
+    import render-widget: func(id: string, layout-json: string);
+    export manifest: func() -> string;
+    export execute: func(tool-name: string, args-json: string) -> string;
+    export channel-provider;
+    export memory-engine;
+    export model-provider;
+    export security-policy;
 }

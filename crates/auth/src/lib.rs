@@ -148,7 +148,16 @@ pub async fn get_auth(email: Option<&str>, case: i32) -> Option<AuthData> {
 
 pub async fn issue_session_token(email: &str) -> String {
     let keyring_entry = keyring::Entry::new("Talos", "session_signing_key").unwrap();
-    let keyring_string = keyring_entry.get_password().unwrap();
+    let keyring_string = match keyring_entry.get_password() {
+        Ok(key) => key,
+        Err(_) => {
+            let mut new_key = [0u8; 32];
+            OsRng.fill_bytes(&mut new_key);
+            let hex_key = hex::encode(new_key);
+            keyring_entry.set_password(&hex_key).unwrap();
+            hex_key
+        }
+    };
     let signing_key = SigningKey::new(keyring_string.as_bytes());
     let token = signed_tokens::sign(email.as_bytes(), &[signing_key]).unwrap();
     token.to_string()
@@ -157,9 +166,9 @@ pub async fn issue_session_token(email: &str) -> String {
 pub async fn verify_session_token(token: &str) -> Option<String> {
     let key = keyring::Entry::new("Talos", "session_signing_key").unwrap().get_password().unwrap();
     let signing_key = SigningKey::new(key.as_bytes());
-    let verified_token = signed_tokens::verify(&token, &[signing_key]).unwrap();
+    let verified_token = signed_tokens::verify(&token, &[signing_key]).ok()?;
     let session_id = verified_token.payload();
-    Some(std::str::from_utf8(session_id).unwrap().to_string())
+    Some(std::str::from_utf8(session_id).ok()?.to_string())
 }
 
 pub async fn totp_setup(email: &str) -> SetupResponse {
