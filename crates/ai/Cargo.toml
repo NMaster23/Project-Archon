@@ -18,3 +18,5 @@ rust-mcp-sdk = "0.10.0"
 ui = { path = "../ui", package = "ui" }
 async-trait = "0.1.89"
 app_dirs2 = "2.5.5"
+mistralrs = "0.8.1"
+turso = "0.8.0-pre.1"

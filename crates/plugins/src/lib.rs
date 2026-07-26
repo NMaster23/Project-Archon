@@ -1,6 +1,13 @@
+use tokio::io::AsyncWriteExt;
 use wasmtime::{Config, Engine, Store, Result};
 use wasmtime::component::{bindgen, Component};
 use turso::Builder;
+use app_dirs2::{get_app_dir, AppInfo, AppDataType, get_app_root};
+
+const APP_INFO: AppInfo = AppInfo {
+    name: "Talos",
+    author: "NMCreator",
+};
 
 bindgen!({
     path: "wit",
@@ -38,7 +45,15 @@ access level bitflags (combinations)
 #[async_trait::async_trait]
 impl archon::plugin::host_capabilities::Host for PluginState {
     async fn emit_trace(&mut self, span_id: String, metrics_json: String) {
-        println!("Emit trace: span-id {}, metrics-json {}", span_id, metrics_json);
+        let logs = format!("{},{},{}\n", self.plugin_id, span_id, metrics_json);
+        if let Ok(mut file) = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("telemetry_traces.log")
+            .await
+        {
+            file.write_all(logs.as_bytes()).await.unwrap();
+        }
     }
     async fn fetch_external(&mut self, url: String, headers_json: String, body: String) -> Result<String, String> {
         if (self.permissions.access_level & 1) == 0 {
@@ -77,12 +92,15 @@ impl ArchonExtensionImports for PluginState {
         println!("Plugin {} Log: {}", self.plugin_id, msg);
     }
     async fn render_widget(&mut self, id: String, layout_json: String) {
-        
+        let sql = "INSERT OR REPLACE INTO plugin_widgets (plugin_id, widget_id, layout_json) VALUES (?, ?, ?)";
+        self.db_pool.execute(sql, (self.plugin_id.clone(), id, layout_json)).await.map_err(|e| e.to_string()).unwrap();
     }
 }
 
 pub async fn plugins() -> Result<()> {
-    let db = Builder::new_local("app.db").build().await?;
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let plugin_db = app_root.join("Plugins").join("plugins.db");
+    let db = Builder::new_local(plugin_db.to_str().unwrap()).build().await?;
     let conn = db.connect()?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plugins (
@@ -100,6 +118,14 @@ pub async fn plugins() -> Result<()> {
         )",
         ()
     ).await.expect("Failed to create table plugin_permissions");
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS plugin_widgets (
+        plugin_id TEXT,
+        widget_id TEXT,
+        layout_json TEXT,
+        PRIMARY KEY(plugin_id, widget_id))",
+        ()
+    ).await.expect("Failed to create table plugin_widgets");
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.async_support(true);

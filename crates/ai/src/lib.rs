@@ -1,3 +1,4 @@
+use std::fmt::format;
 use gemini_live::{
     Auth, GenerationConfig, Modality, ReconnectPolicy, ServerEvent, Session, SessionConfig,
     SetupConfig, TransportConfig,
@@ -13,6 +14,9 @@ use std::time::Duration;
 use talos_core::TalosBus;
 use tokio::sync::mpsc;
 use app_dirs2::{AppDataType, AppInfo, get_app_root};
+use mistralrs::{IsqBits, ModelBuilder, TextMessages, TextMessageRole};
+use tokio::sync::mpsc::UnboundedReceiver;
+use turso::Builder;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -378,4 +382,91 @@ pub async fn create_config() {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
     let config_file = app_root.join("config.json");
     fs::write(config_file, talos_core::CONFIG_TEMPLATE).unwrap();
+}
+
+pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) {
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+    let chat_location = app_root.join(".history").join("chats.db");
+    if !chat_location.exists() {
+        std::fs::create_dir_all(app_root.join(".history")).unwrap();
+    }
+    let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
+    let conn = db.connect().unwrap();
+    conn.execute(
+    "CREATE TABLE IF NOT EXISTS chats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        method TEXT NOT NULL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )",
+    ()
+    ).await.unwrap();
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS profile (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fact TEXT UNIQUE NOT NULL
+        )",
+        ()
+    ).await.unwrap();
+    let mut rows = conn.query("SELECT COUNT(DISTINCT session_id) FROM chats", ()).await.unwrap();
+    let current_session: i64 = if let Ok(Some(row)) = rows.next().await {
+        row.get(0).unwrap_or(0)
+    } else {
+        0
+    };
+    let session_id = format!("session_{}", current_session + 1);
+    while let Some(event) = rx_out.recv().await {
+        match event {
+            TalosBus::VoiceTranscript(speech) => {
+                conn.execute(
+                "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
+                (session_id.clone(), "user", speech, "voice"),
+                ).await.unwrap();
+            }
+            TalosBus::AiResponse(ai_response) => {
+                conn.execute(
+                    "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
+                    (session_id.clone(), "user", ai_response, "ai"),
+                ).await.unwrap();
+            }
+            TalosBus::ActionIntent { tool, args } => {
+                let tool_mem = format!("Used tool: {}, with args: {}", tool, args);
+                conn.execute(
+                    "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
+                    (session_id.clone(), "assistant", tool_mem, "tool-call"),
+                ).await.unwrap();
+            }
+            TalosBus::TerminalOutput(output) => {
+                conn.execute(
+                    "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
+                    (session_id.clone(), "system", output, "agy-cli"),
+                ).await.unwrap();
+            }
+            TalosBus::ScreenCapture(_) => {
+                conn.execute(
+                    "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3)",
+                    (session_id.clone(), "system", "screencap", "system"),
+                ).await.unwrap();
+            }
+            TalosBus::UserCredentials(_) => { return; }
+            TalosBus::Shutdown => { return; }
+        }
+    }
+}
+
+pub async fn manage_memory() {
+    let model = ModelBuilder::new("meta-llama/Llama-3.2-1B")
+        .build()
+        .await;
+
+}
+
+pub async fn manage_soul() {
+
+}
+
+pub async fn self_improvement() {
+
 }
