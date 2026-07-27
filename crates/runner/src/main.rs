@@ -1,11 +1,12 @@
 use app_dirs2::{AppDataType, AppInfo, get_app_root};
 use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
-use talos_ai::gemini_api;
+use talos_ai::{gemini_api, manage_soul, self_improvement};
 use talos_auth::{auth, get_auth};
 use talos_core::{ClientToServer, ServerToClient, TalosBus};
 use notify_rust::{Notification, Timeout};
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -41,7 +42,13 @@ pub async fn start_server() -> anyhow::Result<()> {
     tokio::spawn(async move {
         talos_ui::server_dashboard(bus_tx_ui, config.clone()).await;
     });
-
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(600)).await;
+            manage_soul().await;
+            self_improvement().await;
+        }
+    });
     let api_key_arc = Arc::new(api_key);
 
     loop {

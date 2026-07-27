@@ -14,7 +14,8 @@ use tower_mcp::{BoxError, CallToolResult, HttpTransport, McpRouter, ToolBuilder}
 use std::time::Instant;
 use base64::engine::general_purpose;
 use base64::prelude::*;
-use webp_screenshot_rust::{WebPScreenshot, CaptureConfig, WebPConfig};
+use imageproc::drawing::Canvas;
+use webp_screenshot_rust::{WebPScreenshot, CaptureConfig, WebPConfig, ScreenCapture};
 
 const TOOLS: &[(&str, &str)] = &[
     ("cursor_move", "Move the cursor on screen"),
@@ -233,8 +234,9 @@ pub async fn tools() -> Result<(), BoxError> {
             let mut screenshot = WebPScreenshot::with_config(config).unwrap();
             let results = screenshot.capture_all_displays();
             if let Some(Ok(capture)) = results.into_iter().find(|r| r.is_ok()) {
-                let base64_img = general_purpose::STANDARD.encode(&capture.data);
-                Ok(CallToolResult::image(base64_img, "image/webp"))
+                let img = image::load_from_memory(&capture.data).unwrap().to_rgba8();
+                let base64_img = general_purpose::STANDARD.encode(encode(img).await);
+                Ok(CallToolResult::image(base64_img, "image/jpeg"))
             } else {
                 Ok(CallToolResult::text("Failed to capture any displays."))
             }
@@ -257,38 +259,24 @@ pub async fn tools() -> Result<(), BoxError> {
     Ok(())
 }
 
-pub async fn screen_cap() {
-    let monitor = Monitor::from_point(0, 0).unwrap();
-    let (video_recorder, sx) = monitor.video_recorder().unwrap();
-    tokio::spawn(async move {
-        loop {
-            match sx.recv() {
-                Ok(frame) => {
-                    println!("frame: {:?}", frame.width);
-                    encode(frame, Jpeg).await;
-                }
-                _ => continue,
-            }
-        }
-    });
-    println!("start");
-    video_recorder.start().unwrap();
-}
-
-pub async fn encode(frame: Frame, image_format: ImageFormat) {
-    let image =
-        RgbaImage::from_raw(frame.width, frame.height, frame.raw).expect("Failed to create image");
+pub async fn encode(mut image: RgbaImage) -> Vec<u8> {
     let mut buffer = Cursor::new(Vec::new());
-    let output_format = match image_format {
-        Jpeg => ImageFormat::Jpeg,
-        Png => ImageFormat::Png,
-        _ => ImageFormat::Jpeg,
-    };
+    let grid_color = image::Rgba([255, 0, 0, 255]);
+    let spacing = 100;
+    for x in (0..image.width()).step_by(spacing) {
+        for y in 0..image.height() {
+            image.put_pixel(x, y, grid_color);
+        }
+    }
+    for y in (0..image.height()).step_by(spacing) {
+        for x in 0..image.width() {
+            image.put_pixel(x, y, grid_color);
+        }
+    }
     image
-        .write_to(&mut buffer, output_format)
+        .write_to(&mut buffer, Jpeg)
         .expect("Failed to save image");
-    talos_core::TalosBus::ScreenCapture(buffer.into_inner());
-    println!("screen captured");
+    buffer.into_inner()
 }
 
 pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {

@@ -13,6 +13,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ab_glyph"
+version = "0.2.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01c0457472c38ea5bd1c3b5ada5e368271cb550be7a4ca4a0b4634e9913f6cc2"
+dependencies = [
+ "ab_glyph_rasterizer",
+ "owned_ttf_parser",
+]
+
+[[package]]
+name = "ab_glyph_rasterizer"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
+
+[[package]]
 name = "addr2line"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -112,6 +128,7 @@ dependencies = [
  "async-trait",
  "core",
  "executor",
+ "fastembed",
  "gemini-live",
  "mistralrs",
  "portable-pty",
@@ -1203,7 +1220,7 @@ dependencies = [
  "rand 0.9.4",
  "rand_distr 0.5.1",
  "rayon",
- "safetensors",
+ "safetensors 0.7.0",
  "thiserror 2.0.18",
  "tokenizers 0.22.2",
  "yoke",
@@ -1221,7 +1238,7 @@ dependencies = [
  "libc",
  "num-traits",
  "rayon",
- "safetensors",
+ "safetensors 0.7.0",
  "serde",
  "thiserror 2.0.18",
 ]
@@ -1635,6 +1652,7 @@ dependencies = [
  "cookie",
  "document-features",
  "idna",
+ "indexmap 2.14.0",
  "log",
  "publicsuffix",
  "serde",
@@ -2951,6 +2969,7 @@ dependencies = [
  "core",
  "enigo",
  "image",
+ "imageproc",
  "mcpkit",
  "schemars 1.2.1",
  "serde",
@@ -3042,6 +3061,23 @@ name = "fastdivide"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9afc2bd4d5a73106dd53d10d73d3401c2f32730ba2c0b93ddb888a8983680471"
+
+[[package]]
+name = "fastembed"
+version = "5.17.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3c8600c9ec79b51d60c19911fe14eac04fe9c2895e87d2a3e80e2213d645a32"
+dependencies = [
+ "anyhow",
+ "hf-hub 0.5.0",
+ "image",
+ "ndarray",
+ "ort",
+ "safetensors 0.8.0",
+ "serde",
+ "serde_json",
+ "tokenizers 0.22.2",
+]
 
 [[package]]
 name = "fastrand"
@@ -3603,9 +3639,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi 6.0.0",
  "rand_core 0.10.1",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3664,6 +3702,30 @@ dependencies = [
  "log",
  "xml-rs",
 ]
+
+[[package]]
+name = "glam"
+version = "0.30.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
+
+[[package]]
+name = "glam"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "556f6b2ea90b8d15a74e0e7bb41671c9bdf38cd9f78c284d750b9ce58a2b5be7"
+
+[[package]]
+name = "glam"
+version = "0.32.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
+
+[[package]]
+name = "glam"
+version = "0.33.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f22fb22f065b308be0d8724e3706c7fa3fc2a6c7d6899df4cad7860e7a75436"
 
 [[package]]
 name = "glob"
@@ -3810,6 +3872,27 @@ dependencies = [
  "tokio",
  "ureq 2.12.1",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "hf-hub"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aef3982638978efa195ff11b305f51f1f22f4f0a6cabee7af79b383ebee6a213"
+dependencies = [
+ "dirs",
+ "http",
+ "indicatif 0.18.6",
+ "libc",
+ "log",
+ "native-tls",
+ "rand 0.9.4",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "ureq 3.3.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4001,6 +4084,22 @@ dependencies = [
  "tokio-rustls",
  "tower-service",
  "webpki-roots 1.0.8",
+]
+
+[[package]]
+name = "hyper-tls"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70206fc6890eaca9fde8a0bf71caa2ddfc9fe045ac9e5c70df101a7dbde866e0"
+dependencies = [
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "native-tls",
+ "tokio",
+ "tokio-native-tls",
+ "tower-service",
 ]
 
 [[package]]
@@ -4251,6 +4350,25 @@ checksum = "525e9ff3e1a4be2fbea1fdf0e98686a6d98b4d8f937e1bf7402245af1909e8c3"
 dependencies = [
  "byteorder-lite",
  "quick-error",
+]
+
+[[package]]
+name = "imageproc"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7b27bc0867dc40df08deb53d6e96342db6e0702e7ae33ed09a4eba33e594b05"
+dependencies = [
+ "ab_glyph",
+ "approx",
+ "getrandom 0.4.3",
+ "image",
+ "itertools 0.14.0",
+ "nalgebra 0.35.0",
+ "num",
+ "rand 0.10.1",
+ "rand_distr 0.6.0",
+ "rayon",
+ "rustdct",
 ]
 
 [[package]]
@@ -5509,7 +5627,7 @@ dependencies = [
  "galil-seiferas",
  "half",
  "hashbrown 0.16.1",
- "hf-hub",
+ "hf-hub 0.4.3",
  "hound",
  "html2text",
  "http",
@@ -5543,7 +5661,7 @@ dependencies = [
  "rust-mcp-schema 0.9.6",
  "rustc-hash 2.1.2",
  "rustfft",
- "safetensors",
+ "safetensors 0.7.0",
  "schemars 1.2.1",
  "scraper",
  "serde",
@@ -5616,13 +5734,13 @@ dependencies = [
  "candle-nn",
  "float8",
  "half",
- "hf-hub",
+ "hf-hub 0.4.3",
  "lazy_static",
  "memmap2",
  "paste",
  "rayon",
  "regex",
- "safetensors",
+ "safetensors 0.7.0",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -5693,7 +5811,26 @@ dependencies = [
  "num-traits",
  "rand 0.8.6",
  "rand_distr 0.4.3",
- "simba",
+ "simba 0.9.1",
+ "typenum",
+]
+
+[[package]]
+name = "nalgebra"
+version = "0.35.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adc43a60c217b0c6ff46e47f26911015ad8d2e5a8be1af668c67e370d99a4346"
+dependencies = [
+ "approx",
+ "glam 0.30.10",
+ "glam 0.31.1",
+ "glam 0.32.1",
+ "glam 0.33.2",
+ "matrixmultiply",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "simba 0.10.0",
  "typenum",
 ]
 
@@ -6551,6 +6688,15 @@ dependencies = [
  "hmac-sha256",
  "lzma-rust2",
  "ureq 3.3.0",
+]
+
+[[package]]
+name = "owned_ttf_parser"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36820e9051aca1014ddc75770aab4d68bc1e9e632f0f5627c4086bc216fb583b"
+dependencies = [
+ "ttf-parser",
 ]
 
 [[package]]
@@ -7810,11 +7956,13 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-rustls",
+ "hyper-tls",
  "hyper-util",
  "js-sys",
  "log",
  "mime",
  "mime_guess",
+ "native-tls",
  "percent-encoding",
  "pin-project-lite",
  "quinn",
@@ -7825,6 +7973,7 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
+ "tokio-native-tls",
  "tokio-rustls",
  "tokio-util",
  "tower",
@@ -8131,6 +8280,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustdct"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b61555105d6a9bf98797c063c362a1d24ed8ab0431655e38f1cf51e52089551"
+dependencies = [
+ "rustfft",
+]
+
+[[package]]
 name = "rustfft"
 version = "6.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8269,6 +8427,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "safe_arch"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a52ec151f024d703f9fd65abb7cbe81e7cdb39f18917a3a37e3014470dc7c59"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "safetensors"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8277,6 +8444,19 @@ dependencies = [
  "hashbrown 0.16.1",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "safetensors"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79b079b829cb27a1c3c374341345ed2e8b2c0c839034522cee576c140bd7f846"
+dependencies = [
+ "hashbrown 0.16.1",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -8846,7 +9026,19 @@ dependencies = [
  "num-complex",
  "num-traits",
  "paste",
- "wide",
+ "wide 0.7.33",
+]
+
+[[package]]
+name = "simba"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f45c644a9f3a386f9288625d9f0c1e999e1acf07a37df35d0516c7f199d9cb2"
+dependencies = [
+ "approx",
+ "num-complex",
+ "num-traits",
+ "wide 1.5.0",
 ]
 
 [[package]]
@@ -9018,7 +9210,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a3fe7c28c6512e766b0874335db33c94ad7b8f9054228ae1c2abd47ce7d335e"
 dependencies = [
  "approx",
- "nalgebra",
+ "nalgebra 0.33.3",
  "num-traits",
  "rand 0.8.6",
 ]
@@ -10010,6 +10202,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-native-tls"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
+dependencies = [
+ "native-tls",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-rayon"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10512,6 +10714,12 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "ttf-parser"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "tui-prompts"
@@ -11059,10 +11267,8 @@ dependencies = [
  "auth",
  "axum 0.7.9",
  "core",
- "crossterm 0.29.0",
  "mime_guess",
  "notify-rust",
- "ratatui",
  "rdev",
  "rust-embed",
  "serde",
@@ -11208,15 +11414,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dea7109cdcd5864d4eeb1b58a1648dc9bf520360d7af16ec26d0a9354bafcfc0"
 dependencies = [
  "base64 0.22.1",
+ "cookie_store",
  "der",
+ "flate2",
  "log",
  "native-tls",
  "percent-encoding",
+ "rustls",
  "rustls-pki-types",
+ "serde",
+ "serde_json",
  "socks",
  "ureq-proto",
  "utf8-zero",
  "webpki-root-certs",
+ "webpki-roots 1.0.8",
 ]
 
 [[package]]
@@ -12146,7 +12358,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ce5da8ecb62bcd8ec8b7ea19f69a51275e91299be594ea5cc6ef7819e16cd03"
 dependencies = [
  "bytemuck",
- "safe_arch",
+ "safe_arch 0.7.4",
+]
+
+[[package]]
+name = "wide"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfdfe6a32973f2d1b268b8895845a8a96cac2f0191e72c27cc929036060dbf89"
+dependencies = [
+ "bytemuck",
+ "safe_arch 1.1.0",
 ]
 
 [[package]]

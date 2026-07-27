@@ -1,5 +1,4 @@
 use rdev::{grab, Event, EventType, Key};
-use ratatui::{prelude::*, widgets::*};
 use std::io::stdout;
 use std::path::Path;
 use std::sync::Arc;

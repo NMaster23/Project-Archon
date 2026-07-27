@@ -68,7 +68,7 @@ pub struct VerifyRequest2 {
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthData {
-    pub data: String, // Keep it as data for backward compatibility with runner crate API keys
+    pub data: String,
     #[serde(default)]
     pub username: Option<String>,
     #[serde(default)]

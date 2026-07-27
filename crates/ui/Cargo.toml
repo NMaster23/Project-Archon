@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-crossterm = "0.29.0"
-ratatui = "0.30.2"
 tokio = { version = "1.52.3", features = ["sync", "rt", "macros"] }
 axum = {  version = "0.7", features = ["ws"] }
 tower-http = { version = "0.5", features = ["fs", "cors"] }

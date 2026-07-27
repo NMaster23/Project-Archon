@@ -17,11 +17,71 @@ use app_dirs2::{AppDataType, AppInfo, get_app_root};
 use mistralrs::{IsqBits, ModelBuilder, TextMessages, TextMessageRole};
 use tokio::sync::mpsc::UnboundedReceiver;
 use turso::Builder;
+use fastembed::{TextEmbedding, TextInitOptions, EmbeddingModel};
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
     author: "NMCreator",
 };
+
+pub const MEMORY_PROMPT: &str = r#"You are the background memory compression engine for Talos, a local developer assistant.
+Distill the user's chat log into dense, permanent facts. Ignore all pleasantries, raw code outputs, and conversational filler.
+Extract the data strictly using this format:
+FACTS: [List any new user preferences, project constraints, or system configurations learned]
+STATE: [What was successfully executed, built, or remains broken]
+ENTITIES: [Comma-separated list of specific file paths, Rust crates, tools, or variables mentioned]
+SUMMARY: [One concise sentence describing the final outcome of the interaction]"#;
+
+pub const SOUL_PROMPT: &str = r#"Role:
+You are an expert AI Architect and Prompt Engineer. Your task is to act as the "Soul-Weaver"—synthesizing scattered information into a powerful, cohesive Master System Prompt for a new AI assistant.
+
+Objective:
+I will provide you with a list of raw facts, desired behaviors, and constraints. Your goal is to analyze these inputs, extract the core intent, and weave them into a precise, highly effective System Instruction.
+
+Execution Rules:
+
+    Analyze: Review the raw inputs below to identify the core persona, the primary objective, and the strict boundaries.
+
+    Synthesize: Combine this information into exactly two cohesive paragraphs.
+
+    Paragraph 1 (The Essence): Define the AI's identity, role, tone, and primary mission. Breathe life into its persona and establish who it is and what it aims to achieve.
+
+    Paragraph 2 (The Bounds): Establish the operational rules, formatting requirements, and strict constraints. Define what the AI must do and must never do.
+
+    Refine: Ensure the language is direct, commanding, and leaves no room for ambiguity. Use imperative verbs (e.g., "Always format," "Never assume")."#;
+
+pub const SKILL_PROMPT: &str = r#"Role:
+  You are the Master Skill-Builder, an advanced AI diagnostic system. Your job is to analyze recent execution failures from the AI assistant and write a new, permanent Skill to ensure it never makes the same mistake again.
+
+Objective:
+  Write a comprehensive, highly structured markdown guide that teaches the AI exactly how to solve this specific class of problem flawlessly.
+
+Execution Rules:
+  1. You MUST output ONLY valid markdown. Do not include any conversational filler (e.g., "Here is your skill:", "Understood").
+  2. The very top of your output MUST contain this exact YAML frontmatter block, replacing the bracketed text with your own short titles:
+---
+name: [a-short-kebab-case-name]
+description: [One sentence explaining when the AI should use this skill]
+---
+  3. Below the frontmatter, write the Skill content strictly adhering to the "Skill Structure" defined below.
+  4. DO NOT wrap your entire response in a markdown code block (```markdown). Start immediately with the `---` of the frontmatter.
+
+Skill Structure:
+  ## 1. Failure Analysis & Root Cause
+  Provide a blunt, precise breakdown of exactly where and why the previous attempts failed based on the logs.
+
+  ## 2. Core Operating Principles
+  Define 2-3 absolute rules or algorithmic shifts the AI must adopt to approach this problem correctly.
+
+  ## 3. Execution Protocol
+  Provide a foolproof, sequential algorithm for the AI to follow. Use imperative language (e.g., "Verify X before attempting Y").
+
+  ## 4. Anti-Patterns to Avoid
+  List the specific mistakes from the logs as 'Anti-Patterns' and directly contrast them with the 'Correct Approach'.
+
+<failure_logs>
+{failures}
+</failure_logs>"#;
 
 pub struct StreamingSource {
     receiver: std::sync::mpsc::Receiver<f32>,
@@ -79,6 +139,8 @@ impl AgySession {
                 let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_START__".to_string()));
                 let mut accumulated_output = String::new();
                 let start_time = std::time::Instant::now();
+                let start_time = std::time::Instant::now();
+                let mut last_chunk_time = start_time;
                 let mut last_chunk_time = start_time;
                 let mut got_first_chunk = false;
 
@@ -347,9 +409,9 @@ pub async fn agy_communicate(
     };
     
     if new_chat {
-        cmd.args(["-p", input.trim()]);
+        cmd.args(["--dangerously-skip-permissions", "-p", input.trim()]);
     } else {
-        cmd.args(["-c", "-p", input.trim()]);
+        cmd.args(["--dangerously-skip-permissions", "-c", "-p", input.trim()]);
     }
     
     match cmd.output() {
@@ -456,17 +518,172 @@ pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) {
     }
 }
 
+pub async fn memory_parser(raw_output: &str) -> (String, String, String, String) {
+    let fact_idx = raw_output.find("FACTS:").unwrap_or(raw_output.len());
+    let state_idx = raw_output.find("STATE:").unwrap_or(raw_output.len());
+    let entity_idx = raw_output.find("ENTITIES:").unwrap_or(raw_output.len());
+    let summary_idx = raw_output.find("SUMMARY:").unwrap_or(raw_output.len());
+    let facts_output = raw_output[(fact_idx + 6)..state_idx].trim();
+    let state_output = raw_output[(state_idx + 6)..entity_idx].trim();
+    let entity_output = raw_output[(entity_idx + 9)..summary_idx].trim();
+    let summary_output = raw_output[(summary_idx + 8)..].trim();
+    (facts_output.to_string(), state_output.to_string(), entity_output.to_string(), summary_output.to_string())
+}
+
 pub async fn manage_memory() {
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+    let chat_location = app_root.join(".history").join("chats.db");
+    let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
+    let conn = db.connect().unwrap();
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            level INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            vector F32_BLOB(384) NOT NULL
+        )",
+        ()
+    ).await.unwrap();
     let model = ModelBuilder::new("meta-llama/Llama-3.2-1B")
         .build()
-        .await;
-
+        .await
+        .unwrap();
+    let mut embed_model = TextEmbedding::try_new(
+        TextInitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true).with_intra_threads(4),
+    ).unwrap();
+    let mut rows = conn.query("SELECT COUNT(*) FROM memories WHERE level = 0", ()).await.unwrap();
+    let row = rows.next().await.unwrap().unwrap();
+    let mut session_query = conn.query("SELECT session_id FROM chats ORDER BY id DESC LIMIT 1", ()).await.unwrap();
+    let mut chat = String::new();
+    let target_session = if let Some(row) = session_query.next().await.unwrap() {
+        row.get(0).unwrap()
+    } else {
+        String::new()
+    };
+    if !target_session.is_empty() {
+        let mut chat_rows = conn.query("SELECT role, content FROM chats WHERE session_id = ?1 ORDER BY id ASC", [target_session]).await.unwrap();
+        while let Some(row) = chat_rows.next().await.unwrap() {
+            let role: String = row.get(0).unwrap();
+            let content: String = row.get(1).unwrap();
+            chat.push_str(format!("{}: {}\n", role, content).as_str());
+        }
+    }
+    let message = format!("System: {}\n\nUser: {}", MEMORY_PROMPT, chat);
+    let summary = model.chat(message).await.unwrap();
+    let (facts, state, entities, clean_summary) = memory_parser(&summary).await;
+    let docs = vec![clean_summary.clone()];
+    let embeddings = embed_model.embed(docs, None).unwrap();
+    let memory_vector = format!("{:?}", &embeddings[0]);
+    if !facts.is_empty() {
+        conn.execute(
+            "INSERT OR IGNORE INTO profile (fact) VALUES (?1)",
+            [facts]
+        ).await.unwrap();
+    }
+    conn.execute(
+        "INSERT INTO memories (level, content, vector) VALUES (?1, ?2, vector32(?3))",
+        (0, clean_summary, memory_vector)
+    ).await.unwrap();
+    let mut current_level = 0;
+    loop {
+        let mut count_query = conn.query("SELECT COUNT(*) FROM memories WHERE level = ?1", [current_level]).await.unwrap();
+        let row_count = count_query.next().await.unwrap().unwrap();
+        let count = row_count.get(0).unwrap_or(0);
+        if count < 20 {
+            break
+        }
+        if count >= 20 {
+            let mut group_rows = conn.query("SELECT id, content FROM memories WHERE level = ?1 ORDER BY id ASC LIMIT 10", (current_level,)).await.unwrap();
+            let mut del_ids = Vec::new();
+            let mut combined_content = String::new();
+            while let Some(row) = group_rows.next().await.unwrap() {
+                let id: i64 = row.get(0).unwrap();
+                let text: String = row.get(1).unwrap();
+                del_ids.push(id);
+                combined_content.push_str(&text);
+                combined_content.push_str("\n---\n");
+            }
+            let prompt = format!("System: {}\n\nUser: {}", MEMORY_PROMPT, combined_content);
+            let new_summary = model.chat(prompt).await.unwrap();
+            let (facts, state, entities, clean_summary) = memory_parser(&new_summary).await;
+            let docs = vec![clean_summary.clone()];
+            let embeddings = embed_model.embed(docs, None).unwrap();
+            let memory_vector = format!("{:?}", &embeddings[0]);
+            if !facts.is_empty() {
+                conn.execute(
+                    "INSERT OR IGNORE INTO profile (fact) VALUES (?1)",
+                    [facts]
+                ).await.unwrap();
+            }
+            conn.execute(
+                "INSERT INTO memories (level, content, vector) VALUES (?1, ?2, vector32(?3))",
+                (current_level + 1, clean_summary, memory_vector)
+            ).await.unwrap();
+            for id in del_ids {
+                conn.execute("DELETE FROM memories WHERE id = ?1", [id]).await.unwrap();
+            }
+            current_level += 1;
+        }
+    }
 }
 
 pub async fn manage_soul() {
-
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+    let chat_location = app_root.join(".history").join("chats.db");
+    let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
+    let conn = db.connect().unwrap();
+    let mut to_improve = conn.query(
+        "SELECT fact FROM profile", ()
+    ).await.unwrap();
+    let mut combined_facts = String::new();
+    while let Some(row) = to_improve.next().await.unwrap() {
+        let fact: String = row.get(0).unwrap();
+        combined_facts.push_str(&fact);
+        combined_facts.push_str("\n---\n");
+    }
+    let model = ModelBuilder::new("meta-llama/Llama-3.2-1B")
+        .build()
+        .await
+        .unwrap();
+    let prompt = format!("{}\n\nFacts:\n{}", SOUL_PROMPT, combined_facts);
+    let new_soul = model.chat(prompt).await.unwrap();
+    let agent_dir = app_root.join("Agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    let soul_file = agent_dir.join("agent.md");
+    std::fs::write(&soul_file, &new_soul).unwrap();
+    let rules_dir = std::env::current_dir().unwrap().join(".gemini").join("rules");
+    std::fs::create_dir_all(&rules_dir).unwrap();
+    let soul_file = rules_dir.join("talos_identity.md");
+    std::fs::write(&soul_file, &new_soul).unwrap();
 }
 
 pub async fn self_improvement() {
-
+    let model = ModelBuilder::new("meta-llama/Llama-3.2-1B")
+        .build()
+        .await
+        .unwrap();
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+    let chat_location = app_root.join(".history").join("chats.db");
+    let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
+    let conn = db.connect().unwrap();
+    let mut error_rows = conn.query(
+        "SELECT content FROM chats WHERE content LIKE '%Error%' ORDER BY id DESC LIMIT 3",
+        ()
+    ).await.unwrap();
+    let mut failures = String::new();
+    while let Some(row) = error_rows.next().await.unwrap() {
+        let error: String = row.get(0).unwrap();
+        failures.push_str(&error);
+        failures.push_str("\n---\n");
+    }
+    let prompt = SKILL_PROMPT.replace("{failures}", &failures);
+    let skill_content = model.chat(prompt).await.unwrap();
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let skill_name = format!("skill_{}", timestamp);
+    let user_skills_dir = app_root.join("Agent").join("Skills");
+    std::fs::create_dir_all(&user_skills_dir).unwrap();
+    std::fs::write(&user_skills_dir.join(format!("{}.md", skill_name)), &skill_content).unwrap();
+    let agy_skill_dir = std::env::current_dir().unwrap().join(".gemini").join("skills").join(&skill_name);
+    std::fs::create_dir_all(&agy_skill_dir).unwrap();
+    std::fs::write(&agy_skill_dir.join("SKILL.md"), &skill_content).unwrap();
 }
