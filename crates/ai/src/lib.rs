@@ -1,4 +1,3 @@
-use std::fmt::format;
 use gemini_live::{
     Auth, GenerationConfig, Modality, ReconnectPolicy, ServerEvent, Session, SessionConfig,
     SetupConfig, TransportConfig,
@@ -7,14 +6,14 @@ use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use std::fs;
 use std::io::Read;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::string::ToString;
 use std::time::Duration;
 use talos_core::TalosBus;
 use tokio::sync::mpsc;
 use app_dirs2::{AppDataType, AppInfo, get_app_root};
-use mistralrs::{IsqBits, ModelBuilder, TextMessages, TextMessageRole};
+use mistralrs::ModelBuilder;
 use tokio::sync::mpsc::UnboundedReceiver;
 use turso::Builder;
 use fastembed::{TextEmbedding, TextInitOptions, EmbeddingModel};
@@ -138,9 +137,9 @@ impl AgySession {
                 }
                 let _ = talos_bus_tx.send(TalosBus::TerminalOutput("__PROCESSING_START__".to_string()));
                 let mut accumulated_output = String::new();
+                let _start_time = std::time::Instant::now();
                 let start_time = std::time::Instant::now();
-                let start_time = std::time::Instant::now();
-                let mut last_chunk_time = start_time;
+                let _last_chunk_time = start_time;
                 let mut last_chunk_time = start_time;
                 let mut got_first_chunk = false;
 
@@ -164,7 +163,7 @@ impl AgySession {
                         }
                     }
                 }
-                let stripped = strip_ansi_escapes::strip(&accumulated_output.as_bytes());
+                let stripped = strip_ansi_escapes::strip(accumulated_output.as_bytes());
                 let text = String::from_utf8_lossy(&stripped);
                 let clean_output = text
                     .lines()
@@ -242,11 +241,11 @@ impl rodio::Source for StreamingSource {
 
 pub async fn gemini_communicate_speech(
     mut session: Session,
-    mut rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosBus>,
-    tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>,
+    mut rx_out: UnboundedReceiver<TalosBus>,
+    tx_in: mpsc::UnboundedSender<TalosBus>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let handle = rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
-    let player = rodio::Player::connect_new(&handle.mixer());
+    let player = rodio::Player::connect_new(handle.mixer());
     let (tx_audio, rx_audio) = std::sync::mpsc::channel::<f32>();
     let stream_source = StreamingSource { receiver: rx_audio };
     player.append(stream_source);
@@ -327,8 +326,8 @@ pub async fn gemini_communicate_speech(
 
 pub async fn gemini_api(
     api_key: &str,
-    rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosBus>,
-    tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>,
+    rx_out: UnboundedReceiver<TalosBus>,
+    tx_in: mpsc::UnboundedSender<TalosBus>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ai_management_prompt = r#"You are Talos, an advanced, voice-operated Developer Assistant. You have direct, real-time access to the user's host operating system and terminal through an AGY CLI bridge.
 
@@ -402,7 +401,7 @@ pub async fn agy_communicate(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = if cfg!(target_os = "windows") {
         let mut c = Command::new("cmd");
-        c.args(&["/C", "agy"]);
+        c.args(["/C", "agy"]);
         c
     } else {
         Command::new("agy")
@@ -450,7 +449,7 @@ pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
     let chat_location = app_root.join(".history").join("chats.db");
     if !chat_location.exists() {
-        std::fs::create_dir_all(app_root.join(".history")).unwrap();
+        fs::create_dir_all(app_root.join(".history")).unwrap();
     }
     let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
     let conn = db.connect().unwrap();
@@ -552,7 +551,7 @@ pub async fn manage_memory() {
         TextInitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true).with_intra_threads(4),
     ).unwrap();
     let mut rows = conn.query("SELECT COUNT(*) FROM memories WHERE level = 0", ()).await.unwrap();
-    let row = rows.next().await.unwrap().unwrap();
+    let _row = rows.next().await.unwrap().unwrap();
     let mut session_query = conn.query("SELECT session_id FROM chats ORDER BY id DESC LIMIT 1", ()).await.unwrap();
     let mut chat = String::new();
     let target_session = if let Some(row) = session_query.next().await.unwrap() {
@@ -570,7 +569,7 @@ pub async fn manage_memory() {
     }
     let message = format!("System: {}\n\nUser: {}", MEMORY_PROMPT, chat);
     let summary = model.chat(message).await.unwrap();
-    let (facts, state, entities, clean_summary) = memory_parser(&summary).await;
+    let (facts, _state, _entities, clean_summary) = memory_parser(&summary).await;
     let docs = vec![clean_summary.clone()];
     let embeddings = embed_model.embed(docs, None).unwrap();
     let memory_vector = format!("{:?}", &embeddings[0]);
@@ -605,7 +604,7 @@ pub async fn manage_memory() {
             }
             let prompt = format!("System: {}\n\nUser: {}", MEMORY_PROMPT, combined_content);
             let new_summary = model.chat(prompt).await.unwrap();
-            let (facts, state, entities, clean_summary) = memory_parser(&new_summary).await;
+            let (facts, _state, _entities, clean_summary) = memory_parser(&new_summary).await;
             let docs = vec![clean_summary.clone()];
             let embeddings = embed_model.embed(docs, None).unwrap();
             let memory_vector = format!("{:?}", &embeddings[0]);
@@ -629,7 +628,11 @@ pub async fn manage_memory() {
 
 pub async fn manage_soul() {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
-    let chat_location = app_root.join(".history").join("chats.db");
+    let history_dir = app_root.join(".history");
+    if !history_dir.exists() {
+        fs::create_dir_all(&history_dir).unwrap();
+    }
+    let chat_location = history_dir.join("chats.db");
     let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
     let conn = db.connect().unwrap();
     let mut to_improve = conn.query(
@@ -648,13 +651,13 @@ pub async fn manage_soul() {
     let prompt = format!("{}\n\nFacts:\n{}", SOUL_PROMPT, combined_facts);
     let new_soul = model.chat(prompt).await.unwrap();
     let agent_dir = app_root.join("Agent");
-    std::fs::create_dir_all(&agent_dir).unwrap();
+    fs::create_dir_all(&agent_dir).unwrap();
     let soul_file = agent_dir.join("agent.md");
-    std::fs::write(&soul_file, &new_soul).unwrap();
+    fs::write(&soul_file, &new_soul).unwrap();
     let rules_dir = std::env::current_dir().unwrap().join(".gemini").join("rules");
-    std::fs::create_dir_all(&rules_dir).unwrap();
+    fs::create_dir_all(&rules_dir).unwrap();
     let soul_file = rules_dir.join("talos_identity.md");
-    std::fs::write(&soul_file, &new_soul).unwrap();
+    fs::write(&soul_file, &new_soul).unwrap();
 }
 
 pub async fn self_improvement() {
@@ -681,9 +684,9 @@ pub async fn self_improvement() {
     let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
     let skill_name = format!("skill_{}", timestamp);
     let user_skills_dir = app_root.join("Agent").join("Skills");
-    std::fs::create_dir_all(&user_skills_dir).unwrap();
-    std::fs::write(&user_skills_dir.join(format!("{}.md", skill_name)), &skill_content).unwrap();
+    fs::create_dir_all(&user_skills_dir).unwrap();
+    fs::write(user_skills_dir.join(format!("{}.md", skill_name)), &skill_content).unwrap();
     let agy_skill_dir = std::env::current_dir().unwrap().join(".gemini").join("skills").join(&skill_name);
-    std::fs::create_dir_all(&agy_skill_dir).unwrap();
-    std::fs::write(&agy_skill_dir.join("SKILL.md"), &skill_content).unwrap();
+    fs::create_dir_all(&agy_skill_dir).unwrap();
+    fs::write(agy_skill_dir.join("SKILL.md"), &skill_content).unwrap();
 }

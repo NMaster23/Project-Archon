@@ -2,5 +2,6 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/models/Fun-CosyVoice3-0.5B-2512_ONNX" vcs="Git" />
   </component>
 </project>

@@ -1,21 +1,17 @@
-use std::{env, fs};
+use std::fs;
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
-use image::ImageFormat::{Jpeg, Png};
+use image::ImageFormat::Jpeg;
 use serde_json::{Value, json};
-use std::io::{Cursor, Write};
-use xcap::image::{ImageFormat, RgbaImage};
-use xcap::{Frame, Monitor};
+use std::io::Cursor;
+use xcap::image::RgbaImage;
 use mcpkit::prelude::*;
-use axum;
 use schemars::JsonSchema;
-use serde::Serialize;
 use std::net::SocketAddr;
 use tower_mcp::{BoxError, CallToolResult, HttpTransport, McpRouter, ToolBuilder};
-use std::time::Instant;
 use base64::engine::general_purpose;
 use base64::prelude::*;
 use imageproc::drawing::Canvas;
-use webp_screenshot_rust::{WebPScreenshot, CaptureConfig, WebPConfig, ScreenCapture};
+use webp_screenshot_rust::{WebPScreenshot, CaptureConfig, WebPConfig};
 
 const TOOLS: &[(&str, &str)] = &[
     ("cursor_move", "Move the cursor on screen"),
@@ -117,6 +113,12 @@ pub struct KeyTypeInput {
 }
 
 pub struct McpServer;
+
+impl Default for McpServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl McpServer {
     pub fn new() -> Self {
@@ -280,8 +282,8 @@ pub async fn encode(mut image: RgbaImage) -> Vec<u8> {
 }
 
 pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
-    let parsed: serde_json::Value = serde_json::from_str(args).map_err(|e| e.to_string())?;
-    let mut enigo = McpServer::get_enigo().unwrap();
+    let parsed: Value = serde_json::from_str(args).map_err(|e| e.to_string())?;
+    let mut enigo = McpServer::get_enigo()?;
     match tool_name {
         "cursor_move" => {
             enigo.move_mouse(parsed["x"].as_i64().unwrap() as i32, parsed["y"].as_i64().unwrap() as i32, Coordinate::Abs).map_err(|e| e.to_string())?;
@@ -314,11 +316,10 @@ pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
             let mut parsed_keys = Vec::new();
             if let Some(keys_array) = parsed["keys"].as_array() {
                 for k in keys_array {
-                    if let Some(key_str) = k.as_str() {
-                        if let Some(parsed) = McpServer::parse_key_string(key_str).await {
+                    if let Some(key_str) = k.as_str()
+                        && let Some(parsed) = McpServer::parse_key_string(key_str).await {
                             parsed_keys.push(parsed);
                         }
-                    }
                 }
             }
             for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)) {
@@ -353,7 +354,7 @@ pub async fn mcp_setup() {
         .join("config")
         .join("mcp_config.json");
     let mut config: Value = if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path).unwrap_or_else(|_| "".to_string());
+        let content = fs::read_to_string(&config_path).unwrap_or_else(|_| "".to_string());
         serde_json::from_str(&content).unwrap_or_else(|_| json!({}))
     } else {
         json!({})
@@ -396,6 +397,6 @@ pub async fn mcp_setup() {
     }
 }
 
-pub async fn gemini_api_mcp() -> Vec<serde_json::Value> {
+pub async fn gemini_api_mcp() -> Vec<Value> {
     serde_json::from_str(API_TOOLS).expect("Failed to parse json")
 }

@@ -10,4 +10,3 @@ tokio-tungstenite = { workspace = true }
 rmp-serde = { workspace = true }
 futures-util = { workspace = true }
 anyhow = { workspace = true }
-log = { workspace = true }

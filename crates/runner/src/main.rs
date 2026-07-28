@@ -50,7 +50,6 @@ pub async fn start_server() -> anyhow::Result<()> {
         }
     });
     let api_key_arc = Arc::new(api_key);
-
     loop {
         let (stream, _) = listener.accept().await?;
         
@@ -136,12 +135,12 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
         }
     });
     let ws_url = format!("ws://{}", server_addr);
-    let mut conn = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+    let mut conn = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
             match talos_transport::connect(&ws_url).await {
                 Ok(c) => break c,
                 Err(_) => {
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
         }

@@ -9,6 +9,11 @@ use transcribe_rs::{SpeechModel, TranscribeOptions};
 use webrtc_vad::SampleRate::Rate16kHz;
 use webrtc_vad::VadMode::Quality;
 use webrtc_vad::*;
+use ndarray::{Array, Array2, Array3};
+use ort::inputs;
+use ort::session::builder::GraphOptimizationLevel;
+use ort::session::Session;
+use ort::value::Tensor;
 
 pub fn stt(
     tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>,
@@ -59,7 +64,7 @@ pub fn stt(
                 let skip = (sample_rate / 16000).max(1);
                 let chunk: Vec<f32> = audio.drain(..chunk_size).collect();
                 let mut chunk_16k = Vec::new();
-                for i in (0..chunk.len()).step_by(skip as usize) {
+                for i in (0..chunk.len()).step_by(skip) {
                     chunk_16k.push(chunk[i]);
                 }
                 chunk_16k.resize(480, 0.0);
@@ -91,4 +96,25 @@ pub fn stt(
             }
         }
     }
+}
+
+pub async fn tts() -> ort::Result<()> {
+    let mut model = Session::builder()?
+        .with_optimization_level(GraphOptimizationLevel::Level3)?
+        .commit_from_file("models/flow_hift_fp32.onnx")?;
+    let token = Array2::<i32>::zeros((1, 50));
+    let prompt_token = Array2::<i32>::zeros((1, 20));
+    let prompt_feat = Array3::<f32>::zeros((1, 20, 80));
+    let embedding = Array2::<f32>::zeros((1, 192));
+    let speed = Array::from_elem((), 1.0f32);
+    let outputs = model.run(inputs![
+        "token" => Tensor::from_array(token)?,
+        "prompt_token" => Tensor::from_array(prompt_token)?,
+        "prompt_feat" => Tensor::from_array(prompt_feat)?,
+        "embedding" => Tensor::from_array(embedding)?,
+        "speed" => Tensor::from_array(speed)?,
+    ])?;
+    let audio_tensor = outputs["generated_speech"].try_extract_tensor::<f32>()?;
+    let audio_data: Vec<f32> = audio_tensor.1.to_vec();
+    Ok(())
 }

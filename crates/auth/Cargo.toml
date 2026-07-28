@@ -4,19 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ratatui = "0.30.2"
 tui-prompts = "0.6.7"
-crossterm = "0.29.0"
-oauth2 = "5.0.0"
-magic-crypt = "4.0.1"
 totp-rs = { version = "5.7.2", features = ["qr", "gen_secret"] }
-axum = { version = "0.7" }
+axum = { version = "0.8.9" }
 directories = "6.0.0"
-cocoon = "0.4.3"
-rand = "0.8.6"
+cocoon = "0.5.0"
+rand = "0.10.2"
 hex = "0.4.3"
 keyring = "4.1.5"
 signed_tokens = "0.2.0"
+rand_os = "0.2.2"

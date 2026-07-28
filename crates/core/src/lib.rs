@@ -10,6 +10,7 @@ pub enum TalosBus {
     TerminalOutput(String),
     ActionIntent { tool: String, args: String },
     Shutdown,
+    RenderWidget { plugin_id: String, widget_id: String, layout_json: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

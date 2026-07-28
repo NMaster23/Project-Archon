@@ -2,7 +2,7 @@ use tokio::io::AsyncWriteExt;
 use wasmtime::{Config, Engine, Store, Result};
 use wasmtime::component::{bindgen, Component};
 use turso::Builder;
-use app_dirs2::{get_app_dir, AppInfo, AppDataType, get_app_root};
+use app_dirs2::{AppInfo, AppDataType, get_app_root};
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -12,7 +12,8 @@ const APP_INFO: AppInfo = AppInfo {
 bindgen!({
     path: "wit",
     world: "archon-extension",
-    async: true
+    imports: { default: async },
+    exports: { default: async }
 });
 
 pub struct PluginPermission {
@@ -24,6 +25,7 @@ pub struct PluginState {
     pub permissions: PluginPermission,
     pub db_pool: turso::Connection,
     pub http_client: reqwest::Client,
+    pub event_sender: tokio::sync::mpsc::Sender<core::ServerToClient>,
 }
 
 /*
@@ -42,7 +44,6 @@ access level bitflags (combinations)
 11: Unlimited
 */
 
-#[async_trait::async_trait]
 impl archon::plugin::host_capabilities::Host for PluginState {
     async fn emit_trace(&mut self, span_id: String, metrics_json: String) {
         let logs = format!("{},{},{}\n", self.plugin_id, span_id, metrics_json);
@@ -55,7 +56,7 @@ impl archon::plugin::host_capabilities::Host for PluginState {
             file.write_all(logs.as_bytes()).await.unwrap();
         }
     }
-    async fn fetch_external(&mut self, url: String, headers_json: String, body: String) -> Result<String, String> {
+    async fn fetch_external(&mut self, url: String, _headers_json: String, _body: String) -> Result<String, String> {
         if (self.permissions.access_level & 1) == 0 {
             return Err(String::from("Access level disabled"));
         }
@@ -86,7 +87,6 @@ impl archon::plugin::host_capabilities::Host for PluginState {
     }
 }
 
-#[async_trait::async_trait]
 impl ArchonExtensionImports for PluginState {
     async fn log(&mut self, msg: String) {
         println!("Plugin {} Log: {}", self.plugin_id, msg);
@@ -94,12 +94,19 @@ impl ArchonExtensionImports for PluginState {
     async fn render_widget(&mut self, id: String, layout_json: String) {
         let sql = "INSERT OR REPLACE INTO plugin_widgets (plugin_id, widget_id, layout_json) VALUES (?, ?, ?)";
         self.db_pool.execute(sql, (self.plugin_id.clone(), id, layout_json)).await.map_err(|e| e.to_string()).unwrap();
+        let event = core::ServerToClient::RenderWdiget {
+            plugin_id: self.plugin_id.clone(),
+            widget_id: id,
+            layout_json,
+        };
+        self.event_sender.send(event).await.map_err(|e| e.to_string()).unwrap();
     }
 }
 
-pub async fn plugins() -> Result<()> {
+pub async fn plugins() -> Result<Vec<(String, ArchonExtension, Store<PluginState>)>> {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
-    let plugin_db = app_root.join("Plugins").join("plugins.db");
+    let plugin_dir = app_root.join("Plugins");
+    let plugin_db = plugin_dir.join("plugins.db");
     let db = Builder::new_local(plugin_db.to_str().unwrap()).build().await?;
     let conn = db.connect()?;
     conn.execute(
@@ -128,23 +135,72 @@ pub async fn plugins() -> Result<()> {
     ).await.expect("Failed to create table plugin_widgets");
     let mut config = Config::new();
     config.wasm_component_model(true);
-    config.async_support(true);
     let engine = Engine::new(&config)?;
+    let mut plugins = Vec::new();
+    tokio::fs::create_dir_all(&plugin_dir).await?;
+    let mut entries = tokio::fs::read_dir(plugin_dir).await?;
     let mut linker = wasmtime::component::Linker::<PluginState>::new(&engine);
-    ArchonExtension::add_to_linker(&mut linker, |state| state)?;
-    let component = Component::from_file(&engine, "plugin.wasm")?;
-    let plugin_data = PluginState {
-        plugin_id: "".to_string(),
-        permissions: PluginPermission { access_level: 0 },
-        db_pool: conn.clone(),
-        http_client: reqwest::Client::new(),
-    };
-    let mut store = Store::new(&engine, plugin_data);
-    let (instance, _) = ArchonExtension::instantiate_async(&mut store, &component, &linker).await?;
-    let manifest = instance.call_manifest(&mut store).await?;
-    let manifest_json: serde_json::Value = serde_json::from_str(&manifest)?;
-    let plugin_id = manifest_json["plugin_id"].as_str().unwrap().to_string();
-    conn.execute("INSERT OR REPLACE INTO plugin_permissions (plugin_id, access_level) VALUES (?, ?)", (plugin_id.clone(), 0)).await?;
-    store.data_mut().plugin_id = plugin_id;
+    ArchonExtension::add_to_linker::<PluginState, wasmtime::component::HasSelf<PluginState>>(&mut linker, |state| state)?;
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("wasm") {
+            let component = match Component::from_file(&engine, &path) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Failed to load {:?}: {}", path, e);
+                    continue;
+                }
+            };
+            let plugin_data = PluginState {
+                plugin_id: "".to_string(),
+                permissions: PluginPermission { access_level: 0 },
+                db_pool: conn.clone(),
+                http_client: reqwest::Client::new(),
+            };
+            let mut store = Store::new(&engine, plugin_data);
+            let instance = match ArchonExtension::instantiate_async(&mut store, &component, &linker).await {
+                Ok(inst) => inst,
+                Err(e) => {
+                    eprintln!("Failed to instantiate {:?}: {}", path, e);
+                    continue;
+                }
+            };
+            if let Ok(manifest) = instance.call_manifest(&mut store).await
+                && let Ok(manifest_json) = serde_json::from_str::<serde_json::Value>(&manifest)
+                && let Some(plugin_id) = manifest_json["plugin_id"].as_str() {
+                let plugin_id = plugin_id.to_string();
+                let _ = conn.execute(
+                    "INSERT OR IGNORE INTO plugin_permissions (plugin_id, access_level) VALUES (?, ?)",
+                    (plugin_id.clone(), 0)
+                ).await;
+                let mut rows = conn.query("SELECT access_level FROM plugin_permissions WHERE plugin_id = ?", (plugin_id.clone(),)).await?;
+                if let Some(row) = rows.next().await? {
+                    let access_level: i32 = row.get(0)?;
+                    store.data_mut().permissions.access_level = access_level;
+                }
+                store.data_mut().plugin_id = plugin_id.clone();
+                println!("Successfully loaded plugin: {}", plugin_id);
+                plugins.push((plugin_id, instance, store));
+            }
+        }
+    }
+    Ok(plugins)
+}
+
+pub async fn install_plugin(plugin_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let plugin_dir = app_root.join("Plugins");
+    let fallback_plugin = format!("{}.wasm", plugin_url);
+    tokio::fs::create_dir_all(&plugin_dir).await?;
+    let parsed_url = reqwest::Url::parse(plugin_url)?;
+    let file_name = &parsed_url
+        .path_segments()
+        .and_then(|mut s| s.next_back())
+        .unwrap_or(&fallback_plugin);
+    let mut response = reqwest::get(parsed_url.clone()).await?;
+    let mut file = tokio::fs::File::create(plugin_dir.join(file_name)).await?;
+    while let Some(chunk) = response.chunk().await? {
+        file.write_all(&chunk).await?;
+    }
     Ok(())
 }

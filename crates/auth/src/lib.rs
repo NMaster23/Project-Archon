@@ -1,14 +1,8 @@
 use directories::ProjectDirs;
-use crossterm::{
-    ExecutableCommand,
-    event::{self, Event},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
-use ratatui::{Frame, Terminal, backend::CrosstermBackend};
+use ratatui::Frame;
 use serde::{Deserialize, Serialize};
-use std::{env, fs};
-use std::path::PathBuf;
-use tui_prompts::{Prompt, State, Status, TextPrompt, TextRenderStyle, TextState};
+use std::fs;
+use tui_prompts::{Prompt, TextPrompt, TextRenderStyle, TextState};
 use totp_rs::{Algorithm, TOTP, Secret};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -16,7 +10,8 @@ use std::time::Instant;
 use axum::extract::State as AxumState;
 use axum::Json;use axum::http::StatusCode;
 use cocoon::Cocoon;
-use rand::{rngs::OsRng, RngCore};
+use rand_os::OsRng;
+use rand_os::rand_core::RngCore;
 use totp_rs::qrcodegen_image::image::EncodableLayout;
 use signed_tokens::SigningKey;
 
@@ -36,6 +31,12 @@ pub struct LoginResponse {
 pub struct AuthState {
     pub start_time: Instant,
     pub pending_totp: Arc<RwLock<HashMap<String, UserData>>>,
+}
+
+impl Default for AuthState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AuthState {
@@ -141,7 +142,7 @@ pub async fn get_auth(email: Option<&str>, case: i32) -> Option<AuthData> {
     let entry = keyring::Entry::new("Talos", "encryption_key").ok()?;
     let hex_str = entry.get_password().ok()?;
     let password = hex::decode(hex_str).ok()?;
-    let mut cocoon = Cocoon::new(&password);
+    let cocoon = Cocoon::new(&password);
     let decrypted = cocoon.unwrap(&encrypted).ok()?;
     serde_json::from_slice(&decrypted).ok()
 }
@@ -166,7 +167,7 @@ pub async fn issue_session_token(email: &str) -> String {
 pub async fn verify_session_token(token: &str) -> Option<String> {
     let key = keyring::Entry::new("Talos", "session_signing_key").unwrap().get_password().unwrap();
     let signing_key = SigningKey::new(key.as_bytes());
-    let verified_token = signed_tokens::verify(&token, &[signing_key]).ok()?;
+    let verified_token = signed_tokens::verify(token, &[signing_key]).ok()?;
     let session_id = verified_token.payload();
     Some(std::str::from_utf8(session_id).ok()?.to_string())
 }

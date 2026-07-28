@@ -1,13 +1,11 @@
 use rdev::{grab, Event, EventType, Key};
-use std::io::stdout;
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::{env, fs, thread};
-use std::time::{Duration, Instant};
+use std::{env, fs};
+use std::time::Instant;
 use axum::routing::{get, post};
 use axum::{http::{header, StatusCode, Uri}, response::{IntoResponse, Response}, Json, Router};
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use rust_embed::RustEmbed;
 use tokio::sync::mpsc;
@@ -30,7 +28,7 @@ pub struct ServerStatus {
 struct Assets;
 
 #[derive(Clone)]
-struct AppState {
+pub struct AppState {
     start_time: Instant,
     auth_state: talos_auth::AuthState,
     bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>,
@@ -55,12 +53,11 @@ pub async fn handle_ws_talosbus(mut socket: WebSocket, bus_tx: tokio::sync::broa
     loop {
         tokio::select! {
             Ok(msg) = bus_rx.recv() => {
-                if let Ok(json) = serde_json::to_string(&msg) {
-                    if socket.send(Message::Text(json)).await.is_err() {
+                if let Ok(json) = serde_json::to_string(&msg)
+                    && socket.send(Message::Text(json.into())).await.is_err() {
                         eprintln!("Error sending message");
                         break;
                     }
-                }
             }
             msg_result = socket.recv() => {
                 let msg = match msg_result {
@@ -126,13 +123,13 @@ pub async fn get_config(State(state): State<AppState>) -> Json<TalosConfig> {
     Json(state.config.read().unwrap().clone())
 }
 
-pub async fn update_config(State(state): State<AppState>, Json(new_config): Json<TalosConfig>) -> axum::http::StatusCode {
+pub async fn update_config(State(state): State<AppState>, Json(new_config): Json<TalosConfig>) -> StatusCode {
     let config_dir = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
     new_config.save(&config_dir.join("config.json"));
     if let Ok(mut live_config) = state.config.write() {
         *live_config = new_config;
     }
-    axum::http::StatusCode::OK
+    StatusCode::OK
 }
 
 pub fn get_icon_paths() -> (std::path::PathBuf, std::path::PathBuf) {
@@ -143,9 +140,9 @@ pub fn get_icon_paths() -> (std::path::PathBuf, std::path::PathBuf) {
     (icon_enabled_path, icon_disabled_path)
 }
 
-pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: tokio::sync::mpsc::UnboundedReceiver<String>, config: Arc<std::sync::RwLock<TalosConfig>>) {
+pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: mpsc::UnboundedReceiver<String>, _config: Arc<std::sync::RwLock<TalosConfig>>) {
     let (icon_enabled_path, icon_disabled_path) = get_icon_paths();
-    let (tx, mut rx) = mpsc::unbounded_channel();
+    let (tx, _rx) = mpsc::unbounded_channel();
     let alt_held = Arc::new(AtomicBool::new(false));
     let alt_held_clone = alt_held.clone();
     let callback = move |event: Event| -> Option<Event> {
