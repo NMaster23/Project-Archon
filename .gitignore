@@ -1,3 +1,4 @@
 /target
 *.ort
 *.onnx
+models/Fun-CosyVoice3-0.5B-2512_ONNX/
