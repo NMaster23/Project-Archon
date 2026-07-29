@@ -144,8 +144,8 @@ impl McpServer {
             "alt" => Some(Key::Alt),
             "super" | "win" | "cmd" => Some(Key::Meta),
             other => {
-                if other.chars().count() == 1 {
-                    Some(Key::Unicode(other.chars().next().unwrap()))
+                if let Some(c) = other.chars().next() {
+                    Some(Key::Unicode(c))
                 } else {
                     None
                 }
@@ -160,24 +160,32 @@ pub async fn tools() -> Result<(), BoxError> {
     let cursor_move = ToolBuilder::new("cursor_move")
         .description("Move the cursor to a specific coordinate on the screen.")
         .handler(|input: CursorMoveInput| async move {
-            let mut enigo = McpServer::get_enigo().unwrap();
-            enigo.move_mouse(input.x, input.y, Coordinate::Abs).unwrap();
+            let mut enigo = match McpServer::get_enigo() {
+                Ok(e) => e,
+                Err(e) => return Ok(CallToolResult::error(e)),
+            };
+            if let Err(e) = enigo.move_mouse(input.x, input.y, Coordinate::Abs) {
+                return Ok(CallToolResult::error(e.to_string()));
+            }
             Ok(CallToolResult::text(format!("Moved cursor to X: {} Y: {} on screen", input.x, input.y)))
         })
         .build();
     let mouse_click = ToolBuilder::new("mouse_click")
         .description("Click left, right, or middle mouse button.")
         .handler(|input: MouseClickInput| async move {
-            let mut enigo = McpServer::get_enigo().unwrap();
+            let mut enigo = match McpServer::get_enigo() {
+                Ok(e) => e,
+                Err(e) => return Ok(CallToolResult::error(e)),
+            };
             let mut clicked_button = String::new();
             if input.button == 1 {
-                enigo.button(Button::Left, Direction::Click).unwrap();
+                if let Err(e) = enigo.button(Button::Left, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
                 clicked_button = "Left Button".to_string();
             } else if input.button == 2 {
-                enigo.button(Button::Right, Direction::Click).unwrap();
+                if let Err(e) = enigo.button(Button::Right, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
                 clicked_button = "Right Button".to_string();
             } else if input.button == 3 {
-                enigo.button(Button::Middle, Direction::Click).unwrap();
+                if let Err(e) = enigo.button(Button::Middle, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
                 clicked_button = "Middle Button".to_string();
             }
             Ok(CallToolResult::text(format!("Clicked button: {} successfully", clicked_button)))
@@ -186,15 +194,23 @@ pub async fn tools() -> Result<(), BoxError> {
     let mouse_scroll = ToolBuilder::new("mouse_scroll")
         .description("Scroll the mouse wheel a certain amount of line.")
         .handler(|input: MouseScrollInput| async move {
-            let mut enigo = McpServer::get_enigo().unwrap();
-            enigo.scroll(input.lines, Axis::Vertical).unwrap();
+            let mut enigo = match McpServer::get_enigo() {
+                Ok(e) => e,
+                Err(e) => return Ok(CallToolResult::error(e)),
+            };
+            if let Err(e) = enigo.scroll(input.lines, Axis::Vertical) {
+                return Ok(CallToolResult::error(e.to_string()));
+            }
             Ok(CallToolResult::text(format!("Scrolled the mouse wheel {} successfully.", input.lines)))
         })
         .build();
     let key_press = ToolBuilder::new("key_press")
         .description("Press any key on the keyboard.")
         .handler(|input: KeyPressInput| async move {
-            let mut enigo = McpServer::get_enigo().unwrap();
+            let mut enigo = match McpServer::get_enigo() {
+                Ok(e) => e,
+                Err(e) => return Ok(CallToolResult::error(e)),
+            };
             let mut parsed_keys = Vec::new();
             for k in &input.keys {
                 if let Some(parsed) = McpServer::parse_key_string(k).await {
@@ -204,14 +220,14 @@ pub async fn tools() -> Result<(), BoxError> {
             if parsed_keys.is_empty() {
                 return Ok(CallToolResult::text("No Valid Keys Provided"));
             }
-            for key in parsed_keys.iter().take(parsed_keys.len() - 1) {
-                enigo.key(*key, Direction::Press).unwrap();
+            for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)) {
+                if let Err(e) = enigo.key(*key, Direction::Press) { return Ok(CallToolResult::error(e.to_string())); }
             }
             if let Some(last_key) = parsed_keys.last() {
-                enigo.key(*last_key, Direction::Click).unwrap();
+                if let Err(e) = enigo.key(*last_key, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
             }
             for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)).rev() {
-                enigo.key(*key, Direction::Release).unwrap();
+                if let Err(e) = enigo.key(*key, Direction::Release) { return Ok(CallToolResult::error(e.to_string())); }
             }
             Ok(CallToolResult::text(format!("Pressed keys: {:?} successfully.", input.keys)))
         })
@@ -219,8 +235,13 @@ pub async fn tools() -> Result<(), BoxError> {
     let key_type = ToolBuilder::new("key_type")
         .description("Type a string of keys.")
         .handler(|input: KeyTypeInput| async move {
-            let mut enigo = McpServer::get_enigo().unwrap();
-            enigo.text(&input.text).unwrap();
+            let mut enigo = match McpServer::get_enigo() {
+                Ok(e) => e,
+                Err(e) => return Ok(CallToolResult::error(e)),
+            };
+            if let Err(e) = enigo.text(&input.text) {
+                return Ok(CallToolResult::error(e.to_string()));
+            }
             Ok(CallToolResult::text(format!("Typed text: {} successfully.", input.text)))
         })
         .build();
@@ -233,14 +254,24 @@ pub async fn tools() -> Result<(), BoxError> {
                 use_hardware_acceleration: true,
                 ..Default::default()
             };
-            let mut screenshot = WebPScreenshot::with_config(config).unwrap();
+            let mut screenshot = match WebPScreenshot::with_config(config) {
+                Ok(s) => s,
+                Err(e) => return Ok(CallToolResult::error(e.to_string())),
+            };
             let results = screenshot.capture_all_displays();
             if let Some(Ok(capture)) = results.into_iter().find(|r| r.is_ok()) {
-                let img = image::load_from_memory(&capture.data).unwrap().to_rgba8();
-                let base64_img = general_purpose::STANDARD.encode(encode(img).await);
+                let img = match image::load_from_memory(&capture.data) {
+                    Ok(i) => i.to_rgba8(),
+                    Err(e) => return Ok(CallToolResult::error(e.to_string())),
+                };
+                let encoded = match encode(img).await {
+                    Ok(e) => e,
+                    Err(e) => return Ok(CallToolResult::error(e)),
+                };
+                let base64_img = general_purpose::STANDARD.encode(encoded);
                 Ok(CallToolResult::image(base64_img, "image/jpeg"))
             } else {
-                Ok(CallToolResult::text("Failed to capture any displays."))
+                Ok(CallToolResult::error("Failed to capture any displays.".to_string()))
             }
         })
         .build();
@@ -261,7 +292,7 @@ pub async fn tools() -> Result<(), BoxError> {
     Ok(())
 }
 
-pub async fn encode(mut image: RgbaImage) -> Vec<u8> {
+pub async fn encode(mut image: RgbaImage) -> Result<Vec<u8>, String> {
     let mut buffer = Cursor::new(Vec::new());
     let grid_color = image::Rgba([255, 0, 0, 255]);
     let spacing = 100;
@@ -277,8 +308,8 @@ pub async fn encode(mut image: RgbaImage) -> Vec<u8> {
     }
     image
         .write_to(&mut buffer, Jpeg)
-        .expect("Failed to save image");
-    buffer.into_inner()
+        .map_err(|e| e.to_string())?;
+    Ok(buffer.into_inner())
 }
 
 pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
@@ -286,40 +317,35 @@ pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
     let mut enigo = McpServer::get_enigo()?;
     match tool_name {
         "cursor_move" => {
-            enigo.move_mouse(parsed["x"].as_i64().unwrap() as i32, parsed["y"].as_i64().unwrap() as i32, Coordinate::Abs).map_err(|e| e.to_string())?;
+            let x = parsed["x"].as_i64().ok_or("Missing x")? as i32;
+            let y = parsed["y"].as_i64().ok_or("Missing y")? as i32;
+            enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
             Ok("Moved cursor".into())
         }
         "mouse_click" => {
-            let button = match parsed["button"].as_i64().unwrap() {
-                1 => {
-                    Button::Left
-                }
-                2 => {
-                    Button::Right
-                }
-                3 => {
-                    Button::Middle
-                }
-                _ => {
-                    Button::Left
-                }
+            let button = match parsed["button"].as_i64().unwrap_or(1) {
+                1 => Button::Left,
+                2 => Button::Right,
+                3 => Button::Middle,
+                _ => Button::Left,
             };
             enigo.button(button, Direction::Click).map_err(|e| e.to_string())?;
             Ok("Clicked button".into())
         }
         "mouse_scroll" => {
-            let lines = parsed["lines"].as_i64().unwrap() as i32;
-            enigo.scroll(lines, Axis::Vertical).unwrap();
+            let lines = parsed["lines"].as_i64().ok_or("Missing lines")? as i32;
+            enigo.scroll(lines, Axis::Vertical).map_err(|e| e.to_string())?;
             Ok("Scrolled the mouse wheel".into())
         }
         "key_press" => {
             let mut parsed_keys = Vec::new();
             if let Some(keys_array) = parsed["keys"].as_array() {
                 for k in keys_array {
-                    if let Some(key_str) = k.as_str()
-                        && let Some(parsed) = McpServer::parse_key_string(key_str).await {
+                    if let Some(key_str) = k.as_str() {
+                        if let Some(parsed) = McpServer::parse_key_string(key_str).await {
                             parsed_keys.push(parsed);
                         }
+                    }
                 }
             }
             for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)) {
@@ -334,7 +360,8 @@ pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
             Ok("Pressed keys".into())
         }
         "key_type" => {
-            enigo.text(parsed["type"].as_str().unwrap()).map_err(|e| e.to_string())?;
+            let text = parsed.get("type").or(parsed.get("text")).and_then(|v| v.as_str()).ok_or("Missing text")?;
+            enigo.text(text).map_err(|e| e.to_string())?;
             Ok("Typed text".into())
         }
         _ => Err("Unknown tool".into()),
@@ -349,7 +376,11 @@ pub async fn get_tools() -> Vec<talos_core::ToolDeclaration> {
 }
 
 pub async fn mcp_setup() {
-    let config_path = std::env::home_dir().unwrap()
+    let home = match std::env::home_dir() {
+        Some(h) => h,
+        None => return,
+    };
+    let config_path = home
         .join(".gemini")
         .join("config")
         .join("mcp_config.json");
@@ -390,13 +421,14 @@ pub async fn mcp_setup() {
 
     if changed {
         if let Some(parent) = &config_path.parent() {
-            fs::create_dir_all(parent).unwrap();
+            let _ = fs::create_dir_all(parent);
         }
-        let updated_json = serde_json::to_string_pretty(&config).expect("Failed to create json");
-        fs::write(config_path, &updated_json).expect("Failed to save json");
+        if let Ok(updated_json) = serde_json::to_string_pretty(&config) {
+            let _ = fs::write(config_path, &updated_json);
+        }
     }
 }
 
 pub async fn gemini_api_mcp() -> Vec<Value> {
-    serde_json::from_str(API_TOOLS).expect("Failed to parse json")
+    serde_json::from_str(API_TOOLS).unwrap_or_default()
 }

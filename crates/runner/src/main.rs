@@ -17,7 +17,7 @@ pub async fn start_server() -> anyhow::Result<()> {
     let config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config.json");
     let config_val = talos_core::TalosConfig::load(&config_path, talos_core::CONFIG_TEMPLATE);
     let config = Arc::new(RwLock::new(config_val));
-    let backend = config.read().unwrap().backend.clone();
+    let backend = config.read().map_err(|e| anyhow::anyhow!("{}", e))?.backend.clone();
     let use_api = backend == "API";
     let api_key = if use_api {
         println!("API selected, fetching auth...");
@@ -27,7 +27,7 @@ pub async fn start_server() -> anyhow::Result<()> {
         } else {
             auth(None, "INSERT_API_KEY_OR_SECRET", None, None, 2).await;
             println!("Created user_api.info with dummy data");
-            Some(get_auth(None, 2).await.unwrap().data)
+            Some(get_auth(None, 2).await.ok_or_else(|| anyhow::anyhow!("No auth data"))?.data)
         }
     } else {
         println!("OAuth selected, using agy_communicate...");
@@ -45,8 +45,8 @@ pub async fn start_server() -> anyhow::Result<()> {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(600)).await;
-            manage_soul().await;
-            self_improvement().await;
+            let _ = manage_soul().await;
+            let _ = self_improvement().await;
         }
     });
     let api_key_arc = Arc::new(api_key);
@@ -57,8 +57,17 @@ pub async fn start_server() -> anyhow::Result<()> {
         let api_key_clone = api_key_arc.clone();
 
         tokio::spawn(async move {
-            let mut conn = talos_transport::accept(stream).await.unwrap();
-            conn.send_to_client(&ServerToClient::RequestToolRegistration).await.unwrap();
+            let mut conn = match talos_transport::accept(stream).await {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Accept error: {}", e);
+                    return;
+                }
+            };
+            if let Err(e) = conn.send_to_client(&ServerToClient::RequestToolRegistration).await {
+                eprintln!("Send error: {}", e);
+                return;
+            }
             let (tx_in, mut rx_in) = mpsc::unbounded_channel::<TalosBus>();
             let (tx_out, rx_out) = mpsc::unbounded_channel::<TalosBus>();
 
@@ -154,7 +163,9 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
         talos_ui::client_backend(stt_disabled_ui, ui_rx, config.clone()).await;
     });
     std::thread::spawn(move || {
-        talos_audio::stt(stt_tx, Arc::new(AtomicBool::new(false)), stt_disabled)
+        if let Err(e) = talos_audio::stt(stt_tx, Arc::new(AtomicBool::new(false)), stt_disabled) {
+            eprintln!("STT error: {:?}", e);
+        }
     });
     
     loop {
@@ -185,16 +196,17 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "server" {
-        start_server().await.unwrap();
-        return;
+        start_server().await?;
+        return Ok(());
     }
     let server_address = if args.len() > 2 {
         args[2].clone()
     } else {
         "127.0.0.1:9090".to_string()
     };
-    run_client(&server_address).await.unwrap();
+    run_client(&server_address).await?;
+    Ok(())
 }

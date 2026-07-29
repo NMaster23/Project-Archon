@@ -25,7 +25,7 @@ pub struct PluginState {
     pub permissions: PluginPermission,
     pub db_pool: turso::Connection,
     pub http_client: reqwest::Client,
-    pub event_sender: tokio::sync::mpsc::Sender<core::ServerToClient>,
+    pub event_sender: tokio::sync::mpsc::UnboundedSender<talos_core::TalosBus>,
 }
 
 /*
@@ -53,7 +53,7 @@ impl archon::plugin::host_capabilities::Host for PluginState {
             .open("telemetry_traces.log")
             .await
         {
-            file.write_all(logs.as_bytes()).await.unwrap();
+            file.write_all(logs.as_bytes()).await.expect("Couldn't write log");
         }
     }
     async fn fetch_external(&mut self, url: String, _headers_json: String, _body: String) -> Result<String, String> {
@@ -93,21 +93,21 @@ impl ArchonExtensionImports for PluginState {
     }
     async fn render_widget(&mut self, id: String, layout_json: String) {
         let sql = "INSERT OR REPLACE INTO plugin_widgets (plugin_id, widget_id, layout_json) VALUES (?, ?, ?)";
-        self.db_pool.execute(sql, (self.plugin_id.clone(), id, layout_json)).await.map_err(|e| e.to_string()).unwrap();
-        let event = core::ServerToClient::RenderWdiget {
+        self.db_pool.execute(sql, (self.plugin_id.clone(), id.clone(), layout_json.clone())).await.expect("Couldn't insert plugin");
+        let event = talos_core::TalosBus::RenderWidget {
             plugin_id: self.plugin_id.clone(),
             widget_id: id,
             layout_json,
         };
-        self.event_sender.send(event).await.map_err(|e| e.to_string()).unwrap();
+        self.event_sender.send(event).expect("Could not send event");
     }
 }
 
-pub async fn plugins() -> Result<Vec<(String, ArchonExtension, Store<PluginState>)>> {
+pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::TalosBus>) -> Result<Vec<(String, ArchonExtension, Store<PluginState>)>> {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
     let plugin_dir = app_root.join("Plugins");
     let plugin_db = plugin_dir.join("plugins.db");
-    let db = Builder::new_local(plugin_db.to_str().unwrap()).build().await?;
+    let db = Builder::new_local(plugin_db.to_str().expect("Plugin to string error")).build().await?;
     let conn = db.connect()?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plugins (
@@ -156,6 +156,7 @@ pub async fn plugins() -> Result<Vec<(String, ArchonExtension, Store<PluginState
                 permissions: PluginPermission { access_level: 0 },
                 db_pool: conn.clone(),
                 http_client: reqwest::Client::new(),
+                event_sender: sender.clone(),
             };
             let mut store = Store::new(&engine, plugin_data);
             let instance = match ArchonExtension::instantiate_async(&mut store, &component, &linker).await {

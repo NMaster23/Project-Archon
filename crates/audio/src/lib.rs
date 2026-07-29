@@ -19,18 +19,18 @@ pub fn stt(
     tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>,
     speaking: Arc<AtomicBool>,
     stt_disabled: Arc<AtomicBool>,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut model = StreamingModel::load(
         &PathBuf::from("models\\moonshine-streaming-medium-onnx"),
         4,
         &Quantization::default(),
     )
-    .unwrap();
+        .map_err(|e| e.to_string())?;
     let host = cpal::default_host();
     let device = host
         .default_input_device()
-        .expect("no output device available");
-    let config = device.default_input_config().unwrap().into();
+        .ok_or("no output device available")?;
+    let config: cpal::StreamConfig = device.default_input_config().map_err(|e| e.to_string())?.into();
     let (tx, rx) = std::sync::mpsc::channel::<Vec<f32>>();
     let stream = device
         .build_input_stream(
@@ -43,13 +43,13 @@ pub fn stt(
             },
             None,
         )
-        .expect("failed to build stream");
-    stream.play().unwrap();
+        .map_err(|e| e.to_string())?;
+    stream.play().map_err(|e| e.to_string())?;
     let mut audio = Vec::new();
     let mut speech_buffer = Vec::new();
     let mut silence_chunks = 0;
     let mut vad = Vad::new_with_rate_and_mode(Rate16kHz, Quality);
-    while let Ok(samples) = rx.recv() {
+    Ok(while let Ok(samples) = rx.recv() {
         let sample_rate = config.sample_rate as u32 as usize;
         let channels = config.channels as usize;
         for frame in samples.chunks_exact(channels) {
@@ -84,21 +84,23 @@ pub fn stt(
                 }
                 if silence_chunks == 20 && !speech_buffer.is_empty() {
                     let result = model.transcribe(&speech_buffer, &TranscribeOptions::default());
-                    let result_clone = result.unwrap().text.clone();
-                    let transcript = result_clone.clone();
-                    if !result_clone.is_empty()
-                        && tx_out.send(TalosBus::VoiceTranscript(transcript)).is_err()
-                    {
-                        break;
+                    if let Ok(res) = result {
+                        let result_clone = res.text.clone();
+                        let transcript = result_clone.clone();
+                        if !result_clone.is_empty()
+                            && tx_out.send(TalosBus::VoiceTranscript(transcript)).is_err()
+                        {
+                            break;
+                        }
+                        speech_buffer.clear();
                     }
-                    speech_buffer.clear();
                 }
             }
         }
-    }
+    })
 }
 
-pub async fn tts() -> ort::Result<()> {
+pub async fn tts() -> ort::Result<Vec<f32>> {
     let mut model = Session::builder()?
         .with_optimization_level(GraphOptimizationLevel::Level3)?
         .commit_from_file("models/flow_hift_fp32.onnx")?;
@@ -116,5 +118,5 @@ pub async fn tts() -> ort::Result<()> {
     ])?;
     let audio_tensor = outputs["generated_speech"].try_extract_tensor::<f32>()?;
     let audio_data: Vec<f32> = audio_tensor.1.to_vec();
-    Ok(())
+    Ok(audio_data)
 }

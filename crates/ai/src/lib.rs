@@ -229,10 +229,10 @@ impl rodio::Source for StreamingSource {
         None
     }
     fn channels(&self) -> std::num::NonZeroU16 {
-        std::num::NonZeroU16::new(1).unwrap()
+        std::num::NonZeroU16::new(1).unwrap_or(unsafe { std::num::NonZeroU16::new_unchecked(1) })
     }
     fn sample_rate(&self) -> std::num::NonZeroU32 {
-        std::num::NonZeroU32::new(24000).unwrap()
+        std::num::NonZeroU32::new(24000).unwrap_or(unsafe { std::num::NonZeroU32::new_unchecked(24000) })
     }
     fn total_duration(&self) -> Option<Duration> {
         None
@@ -244,7 +244,7 @@ pub async fn gemini_communicate_speech(
     mut rx_out: UnboundedReceiver<TalosBus>,
     tx_in: mpsc::UnboundedSender<TalosBus>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
+    let handle = rodio::DeviceSinkBuilder::open_default_sink().map_err(|e| e.to_string())?;
     let player = rodio::Player::connect_new(handle.mixer());
     let (tx_audio, rx_audio) = std::sync::mpsc::channel::<f32>();
     let stream_source = StreamingSource { receiver: rx_audio };
@@ -342,8 +342,8 @@ Operational Directives & Safety Rules
     Destructive Actions: If a user asks you to delete files, format drives, or run potentially dangerous commands, ask for confirmation before issuing the AGY instruction."#;
     let executor_tools = executor::gemini_api_mcp().await;
     let gemini_tools = vec![gemini_live::Tool::FunctionDeclarations(
-        executor_tools.into_iter().map(|raw| {
-            serde_json::from_value(raw).unwrap()
+        executor_tools.into_iter().filter_map(|raw| {
+            serde_json::from_value(raw).ok()
         }).collect()
     )];
     let session = Session::connect(SessionConfig {
@@ -374,24 +374,23 @@ Operational Directives & Safety Rules
     Ok(())
 }
 
-pub async fn agy_setup(path: PathBuf) {
+pub async fn agy_setup(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     if cfg!(target_os = "windows") {
         let _ = Command::new("cmd")
             .args(["/C", "curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd && agy"])
-            .status()
-            .expect("failed to execute process");
+            .status()?;
     } else if cfg!(any(target_os = "linux", target_os = "macos")) {
         let _ = Command::new("sh")
             .args([
                 "-c",
                 "curl -fsSL https://antigravity.google/cli/install.sh | bash && agy",
             ])
-            .status()
-            .expect("failed to execute process");
+            .status()?;
     } else {
         println!("Unsupported OS");
     }
     println!("Path successfully found at {:?}", path);
+    Ok(())
 }
 
 pub async fn agy_communicate(
@@ -439,20 +438,21 @@ pub async fn agy_communicate(
     Ok(())
 }
 
-pub async fn create_config() {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+pub async fn create_config() -> Result<(), Box<dyn std::error::Error>> {
+    let app_root = get_app_root(AppDataType::UserData, &APP_INFO)?;
     let config_file = app_root.join("config.json");
-    fs::write(config_file, talos_core::CONFIG_TEMPLATE).unwrap();
+    fs::write(config_file, talos_core::CONFIG_TEMPLATE)?;
+    Ok(())
 }
 
-pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
+    let app_root = get_app_root(AppDataType::UserData, &APP_INFO)?;
     let chat_location = app_root.join(".history").join("chats.db");
     if !chat_location.exists() {
-        fs::create_dir_all(app_root.join(".history")).unwrap();
+        fs::create_dir_all(app_root.join(".history"))?;
     }
-    let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
-    let conn = db.connect().unwrap();
+    let db = Builder::new_local(chat_location.to_str().ok_or("Invalid path")?).build().await?;
+    let conn = db.connect()?;
     conn.execute(
     "CREATE TABLE IF NOT EXISTS chats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -462,16 +462,16 @@ pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) {
         method TEXT NOT NULL,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )",
-    ()
-    ).await.unwrap();
+        ()
+    ).await?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS profile (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         fact TEXT UNIQUE NOT NULL
         )",
         ()
-    ).await.unwrap();
-    let mut rows = conn.query("SELECT COUNT(DISTINCT session_id) FROM chats", ()).await.unwrap();
+    ).await?;
+    let mut rows = conn.query("SELECT COUNT(DISTINCT session_id) FROM chats", ()).await?;
     let current_session: i64 = if let Ok(Some(row)) = rows.next().await {
         row.get(0).unwrap_or(0)
     } else {
@@ -484,37 +484,41 @@ pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) {
                 conn.execute(
                 "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
                 (session_id.clone(), "user", speech, "voice"),
-                ).await.unwrap();
+                ).await?;
             }
             TalosBus::AiResponse(ai_response) => {
                 conn.execute(
                     "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
                     (session_id.clone(), "user", ai_response, "ai"),
-                ).await.unwrap();
+                ).await?;
             }
             TalosBus::ActionIntent { tool, args } => {
                 let tool_mem = format!("Used tool: {}, with args: {}", tool, args);
                 conn.execute(
                     "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
                     (session_id.clone(), "assistant", tool_mem, "tool-call"),
-                ).await.unwrap();
+                ).await?;
             }
             TalosBus::TerminalOutput(output) => {
                 conn.execute(
                     "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
                     (session_id.clone(), "system", output, "agy-cli"),
-                ).await.unwrap();
+                ).await?;
             }
             TalosBus::ScreenCapture(_) => {
                 conn.execute(
                     "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3)",
                     (session_id.clone(), "system", "screencap", "system"),
-                ).await.unwrap();
+                ).await?;
             }
-            TalosBus::UserCredentials(_) => { return; }
-            TalosBus::Shutdown => { return; }
+            TalosBus::UserCredentials(_) => { return Ok(()); }
+            TalosBus::Shutdown => { return Ok(()); }
+            _ => {
+                return Err(Box::<dyn std::error::Error>::from("Unknown error"));
+            }
         }
     }
+    Ok(())
 }
 
 pub async fn memory_parser(raw_output: &str) -> (String, String, String, String) {
@@ -529,11 +533,11 @@ pub async fn memory_parser(raw_output: &str) -> (String, String, String, String)
     (facts_output.to_string(), state_output.to_string(), entity_output.to_string(), summary_output.to_string())
 }
 
-pub async fn manage_memory() {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+pub async fn manage_memory() -> Result<(), Box<dyn std::error::Error>> {
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
     let chat_location = app_root.join(".history").join("chats.db");
-    let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
-    let conn = db.connect().unwrap();
+    let db = Builder::new_local(chat_location.to_str().ok_or("Invalid path")?).build().await?;
+    let conn = db.connect()?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS memories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -542,151 +546,163 @@ pub async fn manage_memory() {
             vector F32_BLOB(384) NOT NULL
         )",
         ()
-    ).await.unwrap();
+    ).await?;
     let model = ModelBuilder::new("meta-llama/Llama-3.2-1B")
         .build()
-        .await
-        .unwrap();
+        .await?;
     let mut embed_model = TextEmbedding::try_new(
         TextInitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true).with_intra_threads(4),
-    ).unwrap();
-    let mut rows = conn.query("SELECT COUNT(*) FROM memories WHERE level = 0", ()).await.unwrap();
-    let _row = rows.next().await.unwrap().unwrap();
-    let mut session_query = conn.query("SELECT session_id FROM chats ORDER BY id DESC LIMIT 1", ()).await.unwrap();
+    )?;
+    let mut rows = conn.query("SELECT COUNT(*) FROM memories WHERE level = 0", ()).await?;
+    let _row = rows.next().await?.ok_or("No row")?;
+    let mut session_query = conn.query("SELECT session_id FROM chats ORDER BY id DESC LIMIT 1", ()).await?;
     let mut chat = String::new();
-    let target_session = if let Some(row) = session_query.next().await.unwrap() {
-        row.get(0).unwrap()
+    let target_session = if let Some(row) = session_query.next().await? {
+        row.get::<String>(0)?
     } else {
         String::new()
     };
     if !target_session.is_empty() {
-        let mut chat_rows = conn.query("SELECT role, content FROM chats WHERE session_id = ?1 ORDER BY id ASC", [target_session]).await.unwrap();
-        while let Some(row) = chat_rows.next().await.unwrap() {
-            let role: String = row.get(0).unwrap();
-            let content: String = row.get(1).unwrap();
+        let mut chat_rows = conn.query("SELECT role, content FROM chats WHERE session_id = ?1 ORDER BY id ASC", [target_session]).await?;
+        while let Some(row) = chat_rows.next().await? {
+            let role: String = row.get(0)?;
+            let content: String = row.get(1)?;
             chat.push_str(format!("{}: {}\n", role, content).as_str());
         }
     }
     let message = format!("System: {}\n\nUser: {}", MEMORY_PROMPT, chat);
-    let summary = model.chat(message).await.unwrap();
+    let summary = model.chat(message).await.map_err(|e| e.to_string())?;
     let (facts, _state, _entities, clean_summary) = memory_parser(&summary).await;
     let docs = vec![clean_summary.clone()];
-    let embeddings = embed_model.embed(docs, None).unwrap();
+    let embeddings = embed_model.embed(docs, None)?;
     let memory_vector = format!("{:?}", &embeddings[0]);
     if !facts.is_empty() {
         conn.execute(
             "INSERT OR IGNORE INTO profile (fact) VALUES (?1)",
             [facts]
-        ).await.unwrap();
+        ).await?;
     }
     conn.execute(
         "INSERT INTO memories (level, content, vector) VALUES (?1, ?2, vector32(?3))",
         (0, clean_summary, memory_vector)
-    ).await.unwrap();
+    ).await?;
     let mut current_level = 0;
     loop {
-        let mut count_query = conn.query("SELECT COUNT(*) FROM memories WHERE level = ?1", [current_level]).await.unwrap();
-        let row_count = count_query.next().await.unwrap().unwrap();
-        let count = row_count.get(0).unwrap_or(0);
+        let mut count_query = conn.query("SELECT COUNT(*) FROM memories WHERE level = ?1", [current_level]).await?;
+        let row_count = count_query.next().await?.ok_or("No row")?;
+        let count: i64 = row_count.get(0)?;
         if count < 20 {
             break
         }
         if count >= 20 {
-            let mut group_rows = conn.query("SELECT id, content FROM memories WHERE level = ?1 ORDER BY id ASC LIMIT 10", (current_level,)).await.unwrap();
+            let mut group_rows = conn.query("SELECT id, content FROM memories WHERE level = ?1 ORDER BY id ASC LIMIT 10", (current_level,)).await?;
             let mut del_ids = Vec::new();
             let mut combined_content = String::new();
-            while let Some(row) = group_rows.next().await.unwrap() {
-                let id: i64 = row.get(0).unwrap();
-                let text: String = row.get(1).unwrap();
+            while let Some(row) = group_rows.next().await? {
+                let id: i64 = row.get(0)?;
+                let text: String = row.get(1)?;
                 del_ids.push(id);
                 combined_content.push_str(&text);
                 combined_content.push_str("\n---\n");
             }
             let prompt = format!("System: {}\n\nUser: {}", MEMORY_PROMPT, combined_content);
-            let new_summary = model.chat(prompt).await.unwrap();
+            let new_summary = model.chat(prompt).await.map_err(|e| e.to_string())?;
             let (facts, _state, _entities, clean_summary) = memory_parser(&new_summary).await;
             let docs = vec![clean_summary.clone()];
-            let embeddings = embed_model.embed(docs, None).unwrap();
+            let embeddings = embed_model.embed(docs, None)?;
             let memory_vector = format!("{:?}", &embeddings[0]);
             if !facts.is_empty() {
                 conn.execute(
                     "INSERT OR IGNORE INTO profile (fact) VALUES (?1)",
                     [facts]
-                ).await.unwrap();
+                ).await?;
             }
             conn.execute(
                 "INSERT INTO memories (level, content, vector) VALUES (?1, ?2, vector32(?3))",
                 (current_level + 1, clean_summary, memory_vector)
-            ).await.unwrap();
+            ).await?;
             for id in del_ids {
-                conn.execute("DELETE FROM memories WHERE id = ?1", [id]).await.unwrap();
+                conn.execute("DELETE FROM memories WHERE id = ?1", [id]).await?;
             }
             current_level += 1;
         }
     }
+    Ok(())
 }
 
-pub async fn manage_soul() {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+pub async fn manage_soul() -> Result<(), Box<dyn std::error::Error>> {
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
     let history_dir = app_root.join(".history");
     if !history_dir.exists() {
-        fs::create_dir_all(&history_dir).unwrap();
+        fs::create_dir_all(&history_dir)?;
     }
     let chat_location = history_dir.join("chats.db");
-    let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
-    let conn = db.connect().unwrap();
+    let db = Builder::new_local(chat_location.to_str().ok_or("Invalid path")?).build().await?;
+    let conn = db.connect()?;
     let mut to_improve = conn.query(
         "SELECT fact FROM profile", ()
-    ).await.unwrap();
+    ).await?;
     let mut combined_facts = String::new();
-    while let Some(row) = to_improve.next().await.unwrap() {
-        let fact: String = row.get(0).unwrap();
+    while let Some(row) = to_improve.next().await? {
+        let fact: String = row.get(0)?;
         combined_facts.push_str(&fact);
         combined_facts.push_str("\n---\n");
     }
     let model = ModelBuilder::new("meta-llama/Llama-3.2-1B")
         .build()
-        .await
-        .unwrap();
+        .await?;
     let prompt = format!("{}\n\nFacts:\n{}", SOUL_PROMPT, combined_facts);
-    let new_soul = model.chat(prompt).await.unwrap();
+    let new_soul = model.chat(prompt).await.map_err(|e| e.to_string())?;
     let agent_dir = app_root.join("Agent");
-    fs::create_dir_all(&agent_dir).unwrap();
+    fs::create_dir_all(&agent_dir)?;
     let soul_file = agent_dir.join("agent.md");
-    fs::write(&soul_file, &new_soul).unwrap();
-    let rules_dir = std::env::current_dir().unwrap().join(".gemini").join("rules");
-    fs::create_dir_all(&rules_dir).unwrap();
+    fs::write(&soul_file, &new_soul)?;
+    let current_dir = std::env::current_dir()?;
+    let rules_dir = current_dir.join(".gemini").join("rules");
+    fs::create_dir_all(&rules_dir)?;
     let soul_file = rules_dir.join("talos_identity.md");
-    fs::write(&soul_file, &new_soul).unwrap();
+    fs::write(&soul_file, &new_soul)?;
+    Ok(())
 }
 
-pub async fn self_improvement() {
+pub async fn get_db_conn() -> Result<turso::Connection, Box<dyn std::error::Error>> {
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let hist_dir = app_root.join(".history");
+    if !hist_dir.exists() {
+        fs::create_dir_all(&hist_dir)?;
+    }
+    let chat_location = hist_dir.join("chats.db");
+    let db = Builder::new_local(chat_location.to_str().ok_or("Invalid path")?).build().await?;
+    let conn = db.connect()?;
+    Ok(conn)
+}
+
+pub async fn self_improvement() -> Result<(), Box<dyn std::error::Error>> {
     let model = ModelBuilder::new("meta-llama/Llama-3.2-1B")
         .build()
-        .await
-        .unwrap();
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
-    let chat_location = app_root.join(".history").join("chats.db");
-    let db = Builder::new_local(chat_location.to_str().unwrap()).build().await.unwrap();
-    let conn = db.connect().unwrap();
+        .await?;
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let conn = get_db_conn().await?;
     let mut error_rows = conn.query(
         "SELECT content FROM chats WHERE content LIKE '%Error%' ORDER BY id DESC LIMIT 3",
-        ()
-    ).await.unwrap();
+        turso::params![]
+    ).await?;
     let mut failures = String::new();
-    while let Some(row) = error_rows.next().await.unwrap() {
-        let error: String = row.get(0).unwrap();
+    while let Some(row) = error_rows.next().await? {
+        let error: String = row.get(0)?;
         failures.push_str(&error);
         failures.push_str("\n---\n");
     }
     let prompt = SKILL_PROMPT.replace("{failures}", &failures);
-    let skill_content = model.chat(prompt).await.unwrap();
-    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let skill_content = model.chat(prompt).await.map_err(|e| e.to_string())?;
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
     let skill_name = format!("skill_{}", timestamp);
     let user_skills_dir = app_root.join("Agent").join("Skills");
-    fs::create_dir_all(&user_skills_dir).unwrap();
-    fs::write(user_skills_dir.join(format!("{}.md", skill_name)), &skill_content).unwrap();
-    let agy_skill_dir = std::env::current_dir().unwrap().join(".gemini").join("skills").join(&skill_name);
-    fs::create_dir_all(&agy_skill_dir).unwrap();
-    fs::write(agy_skill_dir.join("SKILL.md"), &skill_content).unwrap();
+    fs::create_dir_all(&user_skills_dir)?;
+    fs::write(user_skills_dir.join(format!("{}.md", skill_name)), &skill_content)?;
+    let current_dir = std::env::current_dir()?;
+    let agy_skill_dir = current_dir.join(".gemini").join("skills").join(&skill_name);
+    fs::create_dir_all(&agy_skill_dir)?;
+    fs::write(agy_skill_dir.join("SKILL.md"), &skill_content)?;
+    Ok(())
 }

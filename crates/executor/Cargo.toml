@@ -6,7 +6,7 @@ edition = "2024"
 
 
 [dependencies]
-talos-core = { path = "../core", package = "core" }
+talos-core = { path = "../core", package = "talos_core" }
 tokio = { workspace = true }
 xcap = "0.9.6"
 image = "0.25.10"

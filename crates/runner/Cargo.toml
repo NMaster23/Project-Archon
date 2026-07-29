@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 tokio = { workspace = true }
 anyhow = { workspace = true }
-talos-core = { path = "../core", package = "core" }
+talos-core = { path = "../core", package = "talos_core" }
 talos-audio = { path = "../audio", package = "audio" }
 talos-auth = { path = "../auth", package = "auth" }
 talos-ai = { path = "../ai", package = "ai" }
