@@ -9,6 +9,7 @@ pub enum TalosBus {
     UserCredentials(String),
     TerminalOutput(String),
     ActionIntent { tool: String, args: String },
+    ToolCallResult { call_id:  String, tool_name: String, result: String },
     Shutdown,
     RenderWidget { plugin_id: String, widget_id: String, layout_json: String },
 }
@@ -17,7 +18,7 @@ pub enum TalosBus {
 pub enum ClientToServer {
     VoiceTranscript(String),
     ScreenCapture(Vec<u8>),
-    ToolCallResult { call_id: String, success: bool, result: String },
+    ToolCallResult { call_id: String, tool_name: String, success: bool, result: String },
     ToolRegistration { tools: Vec<ToolDeclaration> },
     UserCredentials(String),
     Ping,

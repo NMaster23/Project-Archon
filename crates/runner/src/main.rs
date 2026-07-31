@@ -104,7 +104,15 @@ pub async fn start_server() -> anyhow::Result<()> {
                                 }
                             }
                             ClientToServer::ToolRegistration { tools } => println!("Client registered tools {:?}", tools),
-                            ClientToServer::ToolCallResult { call_id: _, success: _, result } => println!("Tool Result: {}", result),
+                            ClientToServer::ToolCallResult { call_id, tool_name, success: _, result } => {
+                                if is_api {
+                                    tx_out.send(TalosBus::ToolCallResult {
+                                        call_id,
+                                        tool_name,
+                                        result,
+                                    });
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -143,7 +151,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
             eprintln!("Critical Error: {:?}", e);
         }
     });
-    let ws_url = format!("ws://{}", server_addr);
+    let ws_url = format!("wss://{}", server_addr);
     let mut conn = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
             match talos_transport::connect(&ws_url).await {
@@ -169,26 +177,53 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     });
     
     loop {
-        tokio::select! {
-            Some(msg) = stt_rx.recv() => {
-                if let TalosBus::VoiceTranscript(text) = msg {
-                    conn.send_to_server(&ClientToServer::VoiceTranscript(text.clone())).await?;
-                    let _ = ui_tx.send(format!("You: {}", text.trim()));
-                }
+        conn = match talos_transport::connect(&ws_url).await {
+            Ok(c) => c,
+            Err(_) => {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                continue;
             }
-            Ok(msg) = conn.recv_from_server() => {
-                match msg {
-                    ServerToClient::AiResponse(text) | ServerToClient::TerminalOutput(text) => {
-                        let _ = ui_tx.send(text);
+        };
+        loop {
+            tokio::select! {
+                Some(msg) = stt_rx.recv() => {
+                    if let TalosBus::VoiceTranscript(text) = msg {
+                        conn.send_to_server(&ClientToServer::VoiceTranscript(text.clone())).await?;
+                        let _ = ui_tx.send(format!("You: {}", text.trim()));
                     }
-                    ServerToClient::ExecuteToolCall { call_id, tool_name, args } => {
-                        let result = talos_executor::call_tool(&tool_name, &args).await.unwrap_or_else(|e| e);
-                        conn.send_to_server(&ClientToServer::ToolCallResult { call_id, success: true, result }).await?;
+                }
+                res = conn.recv_from_server() => {
+                    match res {
+                        Ok(msg) => {
+                            match msg {
+                                ServerToClient::AiResponse(text) | ServerToClient::TerminalOutput(text) => {
+                                    let _ = ui_tx.send(text.clone());
+                                    tokio::spawn(async move {
+                                        if let Err(e) = talos_audio::tts(&text.clone()).await {
+                                            eprintln!("TTS Error: {}", e);
+                                        }
+                                    });
+                                }
+                                ServerToClient::ExecuteToolCall { call_id, tool_name, args } => {
+                                    let result = talos_executor::call_tool(&tool_name, &args).await.unwrap_or_else(|e| e);
+                                    conn.send_to_server(&ClientToServer::ToolCallResult {
+                                        call_id,
+                                        tool_name,
+                                        success: true,
+                                        result
+                                    }).await?;
+                                }
+                                ServerToClient::RequestToolRegistration => {
+                                    conn.send_to_server(&ClientToServer::ToolRegistration { tools: talos_executor::get_tools().await }).await?;
+                                }
+                                _ => {}
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {}", e);
+                            break;
+                        }
                     }
-                    ServerToClient::RequestToolRegistration => {
-                        conn.send_to_server(&ClientToServer::ToolRegistration { tools: talos_executor::get_tools().await }).await?;
-                    }
-                    _ => {}
                 }
             }
         }

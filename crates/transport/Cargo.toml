@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 talos-core = { path = "../core", package = "talos_core" }
 tokio = { workspace = true }
-tokio-tungstenite = { workspace = true }
+tokio-tungstenite = { workspace = true, features = ["native-tls"] }
 rmp-serde = { workspace = true }
 futures-util = { workspace = true }
 anyhow = { workspace = true }

@@ -1,3 +1,4 @@
+use std::fmt::format;
 use std::fs;
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use image::ImageFormat::Jpeg;
@@ -10,8 +11,11 @@ use std::net::SocketAddr;
 use tower_mcp::{BoxError, CallToolResult, HttpTransport, McpRouter, ToolBuilder};
 use base64::engine::general_purpose;
 use base64::prelude::*;
-use imageproc::drawing::Canvas;
+use imageproc::{drawing::{draw_text_mut, draw_hollow_rect_mut, Canvas}, rect::Rect};
 use webp_screenshot_rust::{WebPScreenshot, CaptureConfig, WebPConfig};
+use ocrs::{OcrEngine, OcrEngineParams};
+use ab_glyph::{FontRef, PxScale};
+use rten::Model;
 
 const TOOLS: &[(&str, &str)] = &[
     ("cursor_move", "Move the cursor on screen"),
@@ -296,15 +300,23 @@ pub async fn encode(mut image: RgbaImage) -> Result<Vec<u8>, String> {
     let mut buffer = Cursor::new(Vec::new());
     let grid_color = image::Rgba([255, 0, 0, 255]);
     let spacing = 100;
-    for x in (0..image.width()).step_by(spacing) {
-        for y in 0..image.height() {
+    let font = FontRef::try_from_slice(include_bytes!("../../../assets/Fonts/OpenSans-Regular.ttf")).unwrap();
+    for (i, x) in (0..image.width()).step_by(spacing).enumerate() {
+        let col_label = format!("{}", (b'A' + (i % 26) as u8) as char);
+        for (j, y) in (0..image.height()).step_by(spacing).enumerate() {
+            let row_label = format!("{}", j);
             image.put_pixel(x, y, grid_color);
+            draw_text_mut(&mut image, grid_color, x as i32 + 5, y as i32 + 5, PxScale::from(15.0), &font, &format!("{}{}", col_label, row_label));
         }
     }
-    for y in (0..image.height()).step_by(spacing) {
-        for x in 0..image.width() {
-            image.put_pixel(x, y, grid_color);
-        }
+    let ocr = ocr_init().await?;
+    let img_tensor = ocrs::ImageSource::from_bytes(image.as_raw(), image.dimensions()).map_err(|e| e.to_string())?;
+    let ocr_input = ocr.prepare_input(img_tensor).map_err(|e| e.to_string())?;
+    let text_lines_raw = ocr.find_text_lines(&ocr_input, Default::default());
+    let text_lines = ocr.recognize_text(&ocr_input, &text_lines_raw);
+    let mut click_targets = Vec::new();
+    for (id, line) in text_lines.iter().enumerate() {
+        
     }
     image
         .write_to(&mut buffer, Jpeg)
@@ -431,4 +443,14 @@ pub async fn mcp_setup() {
 
 pub async fn gemini_api_mcp() -> Vec<Value> {
     serde_json::from_str(API_TOOLS).unwrap_or_default()
+}
+
+pub async fn ocr_init() -> Result<OcrEngine, String> {
+    let detection_model = Model::load_file("models/ocrs/text-detection-ssfbcj81.rten").map_err(|e| e.to_string())?;
+    let recognition_model = Model::load_file("models/ocrs/text-rec-checkpoint-s52qdbqt.rten").map_err(|e| e.to_string())?;
+    OcrEngine::new(OcrEngineParams {
+        detection_model: Some(detection_model),
+        recognition_model: Some(recognition_model),
+        ..Default::default()
+    }).map_err(|e| e.to_string())
 }

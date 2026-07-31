@@ -20,3 +20,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 base64 = "0.23.0"
 webp-screenshot-rust = "1.0.0"
 imageproc = "0.27.0"
+ocrs = "0.12.2"
+rten = "0.24.0"
+ab_glyph = "0.2.32"

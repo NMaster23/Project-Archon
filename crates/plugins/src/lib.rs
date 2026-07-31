@@ -52,9 +52,9 @@ impl archon::plugin::host_capabilities::Host for PluginState {
             .append(true)
             .open("telemetry_traces.log")
             .await
-        {
-            file.write_all(logs.as_bytes()).await.expect("Couldn't write log");
-        }
+            && let Err(e) = file.write_all(logs.as_bytes()).await {
+                eprintln!("Couldn't write log: {}", e);
+            }
     }
     async fn fetch_external(&mut self, url: String, _headers_json: String, _body: String) -> Result<String, String> {
         if (self.permissions.access_level & 1) == 0 {
@@ -93,13 +93,17 @@ impl ArchonExtensionImports for PluginState {
     }
     async fn render_widget(&mut self, id: String, layout_json: String) {
         let sql = "INSERT OR REPLACE INTO plugin_widgets (plugin_id, widget_id, layout_json) VALUES (?, ?, ?)";
-        self.db_pool.execute(sql, (self.plugin_id.clone(), id.clone(), layout_json.clone())).await.expect("Couldn't insert plugin");
+        if let Err(e) = self.db_pool.execute(sql, (self.plugin_id.clone(), id.clone(), layout_json.clone())).await {
+            eprintln!("Couldn't insert plugin widget: {}", e);
+        }
         let event = talos_core::TalosBus::RenderWidget {
             plugin_id: self.plugin_id.clone(),
             widget_id: id,
             layout_json,
         };
-        self.event_sender.send(event).expect("Could not send event");
+        if let Err(e) = self.event_sender.send(event) {
+            eprintln!("Could not send event: {}", e);
+        }
     }
 }
 
@@ -107,7 +111,7 @@ pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::Talo
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
     let plugin_dir = app_root.join("Plugins");
     let plugin_db = plugin_dir.join("plugins.db");
-    let db = Builder::new_local(plugin_db.to_str().expect("Plugin to string error")).build().await?;
+    let db = Builder::new_local(plugin_db.to_str().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Plugin to string error"))?).build().await?;
     let conn = db.connect()?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plugins (
@@ -117,14 +121,14 @@ pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::Talo
         PRIMARY KEY (plugin_id, key)
         )",
         (),
-    ).await.expect("Failed to create table plugins");
+    ).await?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plugin_permissions (
             plugin_id TEXT PRIMARY KEY,
             access_level INTEGER
         )",
         ()
-    ).await.expect("Failed to create table plugin_permissions");
+    ).await?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plugin_widgets (
         plugin_id TEXT,
@@ -132,7 +136,7 @@ pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::Talo
         layout_json TEXT,
         PRIMARY KEY(plugin_id, widget_id))",
         ()
-    ).await.expect("Failed to create table plugin_widgets");
+    ).await?;
     let mut config = Config::new();
     config.wasm_component_model(true);
     let engine = Engine::new(&config)?;

@@ -260,6 +260,17 @@ pub async fn gemini_communicate_speech(
                 if !processed.is_empty() {
                     speech.push_str(&processed);
                 }
+            },
+            Some(TalosBus::ToolCallResult { call_id, tool_name, result }) => {
+                let result: serde_json::Value = serde_json::from_str(&result).unwrap_or(serde_json::Value::Null);
+                let tool_response = gemini_live::FunctionResponse {
+                    id: call_id,
+                    name: tool_name,
+                    response: result,
+                };
+                if let Err(e) = session.send_tool_response(vec![tool_response]).await {
+                    eprintln!("{}", e);
+                }
             }
             Some(_) => continue,
             None => break,

@@ -9,6 +9,5 @@ cpal = "0.18.1"
 transcribe-rs = { version = "0.3.11", features = ["onnx"] }
 tokio = { workspace = true }
 webrtc-vad = "0.4.0"
-ort = { version = "=2.0.0-rc.12", features = ["ndarray"] }
-ndarray = "0.17.2"
-rodio = "0.22.2"
+any-tts = "0.1.2"
+rubato = "0.12.0"
