@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use serde::de::DeserializeOwned;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TalosBus {
@@ -78,39 +78,54 @@ pub const CONFIG_TEMPLATE: &str = r#"{
   "auto_start_plugins": true,
   "plugin_directory": "./plugins",
   "allowed_mcp_servers": ["*"],
-  
+
+  "cloudflare_token": null,
+
   "_note": "Plugins will inject their custom settings here",
   "example_plugin_theme": "dark"
 }"#;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct TalosConfig {
-    pub ai_permissions: Vec<String>,
-    pub backend: String,
+pub struct ServerConfig {
     pub dashboard_port: u16,
+    pub cloudflare_token: Option<String>,
     pub run_in_background: bool,
     pub start_on_boot: bool,
     pub debug_logging: bool,
-    pub gemini_api_key: String,
-    pub model: String,
-    pub system_prompt_override: String,
-    pub max_output_tokens: u32,
+    pub plugin_directory: String,
+    pub allowed_mcp_servers: Vec<String>,
+}
+
+impl ConfigFile for ServerConfig {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ClientConfig {
     pub stt_disabled_by_default: bool,
     pub input_device: String,
     pub output_device: String,
     pub silence_threshold_rms: f32,
     pub push_to_talk_key: Option<String>,
-    pub auto_start_plugins: bool,
-    pub plugin_directory: String,
-    pub allowed_mcp_servers: Vec<String>,
-    #[serde(flatten)]
-    pub custom_settings: HashMap<String, serde_json::Value>,
 }
 
-impl TalosConfig {
-    pub fn load(path: &std::path::Path, template: &str) -> Self {
+impl ConfigFile for ClientConfig {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UserPreferences {
+    pub backend: String,
+    pub model: String,
+    pub system_prompt_override: String,
+    pub max_output_tokens: u32,
+}
+
+impl ConfigFile for UserPreferences {}
+
+pub trait ConfigFile: DeserializeOwned + Serialize + Default {
+    fn load(path: &std::path::Path, template: &str) -> Self {
         if path.exists() {
-            let contents = std::fs::read_to_string(path).unwrap();
+            let contents = match std::fs::read_to_string(path) {
+                Ok(text) => text,
+                Err(_) => return Self::default(),
+            };
             serde_json::from_str(&contents).unwrap_or_else(|_| Self::default())
         } else {
             std::fs::write(path, template).ok();
@@ -118,9 +133,9 @@ impl TalosConfig {
         }
     }
 
-    pub fn save(&self, path: &std::path::Path) {
+    fn save(&self, path: &std::path::Path) {
         if let Ok(contents) = serde_json::to_string_pretty(self) {
-            std::fs::write(path, contents).unwrap();
+            std::fs::write(path, contents).ok();
         }
     }
 }

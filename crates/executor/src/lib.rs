@@ -1,4 +1,3 @@
-use std::fmt::format;
 use std::fs;
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use image::ImageFormat::Jpeg;
@@ -8,14 +7,18 @@ use xcap::image::RgbaImage;
 use mcpkit::prelude::*;
 use schemars::JsonSchema;
 use std::net::SocketAddr;
+use std::process::Stdio;
+use tokio::process::Command;
 use tower_mcp::{BoxError, CallToolResult, HttpTransport, McpRouter, ToolBuilder};
 use base64::engine::general_purpose;
 use base64::prelude::*;
-use imageproc::{drawing::{draw_text_mut, draw_hollow_rect_mut, Canvas}, rect::Rect};
+use imageproc::{drawing::{draw_text_mut, draw_hollow_rect_mut}, rect::Rect};
 use webp_screenshot_rust::{WebPScreenshot, CaptureConfig, WebPConfig};
 use ocrs::{OcrEngine, OcrEngineParams};
 use ab_glyph::{FontRef, PxScale};
 use rten::Model;
+use ocrs::TextItem;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 const TOOLS: &[(&str, &str)] = &[
     ("cursor_move", "Move the cursor on screen"),
@@ -148,11 +151,7 @@ impl McpServer {
             "alt" => Some(Key::Alt),
             "super" | "win" | "cmd" => Some(Key::Meta),
             other => {
-                if let Some(c) = other.chars().next() {
-                    Some(Key::Unicode(c))
-                } else {
-                    None
-                }
+                other.chars().next().map(Key::Unicode)
             }
         }
     }
@@ -227,8 +226,8 @@ pub async fn tools() -> Result<(), BoxError> {
             for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)) {
                 if let Err(e) = enigo.key(*key, Direction::Press) { return Ok(CallToolResult::error(e.to_string())); }
             }
-            if let Some(last_key) = parsed_keys.last() {
-                if let Err(e) = enigo.key(*last_key, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
+            if let Some(last_key) = parsed_keys.last() && let Err(e) = enigo.key(*last_key, Direction::Click) {
+                return Ok(CallToolResult::error(e.to_string()));
             }
             for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)).rev() {
                 if let Err(e) = enigo.key(*key, Direction::Release) { return Ok(CallToolResult::error(e.to_string())); }
@@ -272,7 +271,7 @@ pub async fn tools() -> Result<(), BoxError> {
                     Ok(e) => e,
                     Err(e) => return Ok(CallToolResult::error(e)),
                 };
-                let base64_img = general_purpose::STANDARD.encode(encoded);
+                let base64_img = general_purpose::STANDARD.encode(&encoded.0);
                 Ok(CallToolResult::image(base64_img, "image/jpeg"))
             } else {
                 Ok(CallToolResult::error("Failed to capture any displays.".to_string()))
@@ -290,13 +289,13 @@ pub async fn tools() -> Result<(), BoxError> {
     let transport = HttpTransport::new(router);
     let app = transport.into_router();
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!("Talos Executor running on http://{}", addr);
+    println!("Talos Executor running on https://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
 }
 
-pub async fn encode(mut image: RgbaImage) -> Result<Vec<u8>, String> {
+pub async fn encode(mut image: RgbaImage) -> Result<(Vec<u8>, Vec<(i32, i32, String)>), String> {
     let mut buffer = Cursor::new(Vec::new());
     let grid_color = image::Rgba([255, 0, 0, 255]);
     let spacing = 100;
@@ -315,13 +314,27 @@ pub async fn encode(mut image: RgbaImage) -> Result<Vec<u8>, String> {
     let text_lines_raw = ocr.find_text_lines(&ocr_input, Default::default());
     let text_lines = ocr.recognize_text(&ocr_input, &text_lines_raw);
     let mut click_targets = Vec::new();
-    for (id, line) in text_lines.iter().enumerate() {
-        
+    let flat_lines: Vec<_> = text_lines.into_iter().flatten().flatten().collect();
+    for (id, line) in flat_lines.iter().enumerate() {
+        let bounding_box = line.bounding_rect();
+        let min_x = bounding_box.left();
+        let min_y = bounding_box.top();
+        let max_x = bounding_box.right();
+        let max_y = bounding_box.bottom();
+        let x_cent = (min_x + max_x) / 2;
+        let y_cent = (min_y + max_y) / 2;
+        let rect = Rect::at(min_x, min_y)
+            .of_size((max_x - min_x) as u32, (max_y - min_y) as u32);
+        draw_hollow_rect_mut(&mut image, rect, image::Rgba([255, 255, 0, 255]));
+        let tag = format!("[{}]", id);
+        draw_text_mut(&mut image, image::Rgba([0, 255, 0, 255]), min_x, min_y - 15, PxScale::from(14.0), &font, &tag);
+        click_targets.push((x_cent, y_cent, line.to_string()));
+        image.write_to(&mut buffer, Jpeg).map_err(|e| e.to_string())?;
     }
     image
         .write_to(&mut buffer, Jpeg)
         .map_err(|e| e.to_string())?;
-    Ok(buffer.into_inner())
+    Ok((buffer.into_inner(), click_targets))
 }
 
 pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
@@ -353,10 +366,8 @@ pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
             let mut parsed_keys = Vec::new();
             if let Some(keys_array) = parsed["keys"].as_array() {
                 for k in keys_array {
-                    if let Some(key_str) = k.as_str() {
-                        if let Some(parsed) = McpServer::parse_key_string(key_str).await {
-                            parsed_keys.push(parsed);
-                        }
+                    if let Some(key_str) = k.as_str() && let Some(parsed) = McpServer::parse_key_string(key_str).await {
+                        parsed_keys.push(parsed);
                     }
                 }
             }

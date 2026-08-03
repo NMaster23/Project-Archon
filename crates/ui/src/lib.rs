@@ -2,16 +2,22 @@ use rdev::{grab, Event, EventType, Key};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, fs};
+use std::io::ErrorKind;
+use std::process::Stdio;
 use std::time::Instant;
 use axum::routing::{get, post};
-use axum::{http::{header, StatusCode, Uri}, response::{IntoResponse, Response}, Json, Router};
+use axum::{http::{header, StatusCode, Uri}, response::{IntoResponse, Response}, Json, Router, Extension};
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use rust_embed::RustEmbed;
 use tokio::sync::mpsc;
 use notify_rust::{Notification, Timeout};
-use talos_core::TalosConfig;
 use app_dirs2::{AppDataType, AppInfo, get_app_root};
+use tokio::io::BufReader;
+use tokio::process::Command;
+use tokio::io::AsyncBufReadExt;
+use talos_core::{ClientConfig, ServerConfig, UserPreferences};
+use talos_core::ConfigFile;
 
 const ICON_ENABLED_BYTES: &[u8] = include_bytes!("..\\..\\..\\assets\\Icon.png");
 const ICON_DISABLED_BYTES: &[u8] = include_bytes!("..\\..\\..\\assets\\Icon_Disabled.png");
@@ -32,7 +38,7 @@ pub struct AppState {
     start_time: Instant,
     auth_state: talos_auth::AuthState,
     bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>,
-    config: Arc<std::sync::RwLock<TalosConfig>>,
+    config: Arc<std::sync::RwLock<ServerConfig>>,
 }
 
 impl axum::extract::FromRef<AppState> for talos_auth::AuthState {
@@ -103,7 +109,6 @@ async fn static_handler(uri: Uri) -> Response {
     if path.is_empty() {
         path = "index.html";
     }
-
     match Assets::get(path) {
         Some(content) => {
             let mime = mime_guess::from_path(path).first_or_octet_stream();
@@ -119,17 +124,53 @@ async fn static_handler(uri: Uri) -> Response {
     }
 }
 
-pub async fn get_config(State(state): State<AppState>) -> Json<TalosConfig> {
-    Json(state.config.read().unwrap().clone())
+pub async fn get_server_config(State(state): State<AppState>) -> Response {
+    let config = match state.config.read() {
+        Ok(config) => config.clone(),
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Config fetch error").into_response();
+        }
+    };
+    Json(config).into_response()
 }
 
-pub async fn update_config(State(state): State<AppState>, Json(new_config): Json<TalosConfig>) -> StatusCode {
-    let config_dir = get_app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
-    new_config.save(&config_dir.join("config.json"));
-    if let Ok(mut live_config) = state.config.write() {
-        *live_config = new_config;
+pub async fn get_user_preferences(Extension(email): Extension<String>) -> Response {
+    let config_dir = match get_app_root(AppDataType::UserConfig, &APP_INFO) {
+        Ok(c) => c,
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Could not find path").into_response();
+        }
+    };
+    let preferences_path = config_dir.join(format!("{}.json", email));
+    let preferences = UserPreferences::load(&preferences_path, "{}");
+    Json(preferences).into_response()
+}
+
+pub async fn update_user_prefs(Extension(email): Extension<String>, Json(new_prefs): Json<UserPreferences>) -> Response {
+    let config_dir = match get_app_root(AppDataType::UserConfig, &APP_INFO) {
+        Ok(dir) => dir,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+    let preferences_path = config_dir.join(format!("{}_prefs.json", email));
+    new_prefs.save(&preferences_path);
+    StatusCode::OK.into_response()
+}
+
+pub async fn update_server_config(State(state): State<AppState>, Json(new_config): Json<ServerConfig>) -> Response {
+    let config_dir = match get_app_root(AppDataType::UserConfig, &APP_INFO) {
+        Ok(dir) => dir,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+    new_config.save(&config_dir.join("server_config.json"));
+    match state.config.write() {
+        Ok(mut config) => {
+            *config = new_config;
+        }
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+        }
     }
-    StatusCode::OK
+    StatusCode::OK.into_response()
 }
 
 pub fn get_icon_paths() -> (std::path::PathBuf, std::path::PathBuf) {
@@ -140,7 +181,7 @@ pub fn get_icon_paths() -> (std::path::PathBuf, std::path::PathBuf) {
     (icon_enabled_path, icon_disabled_path)
 }
 
-pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: mpsc::UnboundedReceiver<String>, _config: Arc<std::sync::RwLock<TalosConfig>>) {
+pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: mpsc::UnboundedReceiver<String>, _config: Arc<std::sync::RwLock<ClientConfig>>) {
     let (icon_enabled_path, icon_disabled_path) = get_icon_paths();
     let (tx, _rx) = mpsc::unbounded_channel();
     let alt_held = Arc::new(AtomicBool::new(false));
@@ -187,25 +228,145 @@ pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: mpsc::Unbound
     }
 }
 
+pub async fn install_cloudflare() {
+    #[cfg(target_os = "windows")]
+    let (shell, args) = (
+        "powershell",
+        [
+            "-Command",
+            r#"Invoke-WebRequest "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"; Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "service install" -Verb RunAs -Wait"#,
+        ],
+    );
 
+    #[cfg(target_os = "macos")]
+    let (shell, args) = (
+        "sh",
+        [
+            "-c",
+            r#"curl -L "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$(uname -m | sed 's/x86_64/amd64/').tgz" | tar -xz && sudo mv cloudflared /usr/local/bin/"#
+        ],
+    );
 
-pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>, config: Arc<std::sync::RwLock<TalosConfig>>) {
+    #[cfg(target_os = "linux")]
+    let (shell, args) = (
+        "sh",
+        [
+            "-c",
+            r#"curl -L "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" -o cloudflared && chmod +x cloudflared && sudo mv cloudflared /usr/local/bin"#
+        ],
+    );
+
+    let status = Command::new(shell)
+        .args(args)
+        .status()
+        .await
+        .expect("Failed to start cloudflared installer");
+    if status.success() {
+        println!("Installed cloudflared successfully");
+    } else {
+        eprintln!("Installation failed with status: {}", status);
+    }
+}
+
+pub async fn setup_cloudflare() {
+    let bin_name = if std::path::Path::new("cloudflared.exe").exists() {
+        ".\\cloudflared.exe"
+    } else {
+        "cloudflared"
+    };
+    match Command::new(bin_name).arg("--version").output().await {
+        Ok(output) => {
+            println!("Cloudflared installed and version is {}", String::from_utf8_lossy(&output.stdout));
+        }
+        Err(e) => {
+            if e.kind() == ErrorKind::NotFound {
+                println!("Failed to find cloudflared");
+                install_cloudflare().await;
+            } else {
+                println!("Unknown error: {:?}", e);
+            }
+        }
+    }
+}
+
+pub async fn spawn_cloudflare(port: u16, token: Option<String>) -> Result<String, String> {
+    setup_cloudflare().await;
+    let bin_name = if std::path::Path::new("cloudflared.exe").exists() {
+        ".\\cloudflared.exe"
+    } else {
+        "cloudflared"
+    };
+    if let Some(t) = token {
+        let _child = Command::new(bin_name)
+            .args(["tunnel", "run", "--token"])
+            .arg(&t)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("failed to spawn cloudflare (User Domain)");
+        Ok("Using User Domain".to_string())
+    } else {
+        let mut child = Command::new(bin_name)
+            .args(["tunnel", "--url"])
+            .arg(format!("http://127.0.0.1:{}", port))
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("failed to spawn cloudflare (Auto Domain)");
+        let stderr_handle = child.stderr.take().unwrap();
+        let mut reader = BufReader::new(stderr_handle).lines();
+        while let Some(line) = reader.next_line().await.unwrap() {
+            if line.contains("trycloudflare.com") && let Some(start_index) = line.find("https://") {
+                let substring = &line[start_index..];
+                if let Some(index) = substring.find(|c: char| c.is_whitespace() || c == '|') {
+                    let final_url = &substring[0..index];
+                    return Ok(final_url.to_string());
+                }
+            }
+        }
+        Err("Process closed without giving a URL".to_string())
+    }
+}
+
+pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>, config: Arc<std::sync::RwLock<ServerConfig>>) {
     let state = AppState {
         start_time: Instant::now(),
         auth_state: talos_auth::AuthState::new(),
         bus_tx,
-        config,
+        config: config.clone()
     };
-    let app = Router::new()
+    let config = state.config.clone();
+    let cloudflare_token = config.read().unwrap().cloudflare_token.clone();
+    let private_router = Router::new()
         .route("/api/status", get(get_server_status))
         .route("/api/talosbus", get(get_talosbus_ws))
+        .route("/api/config", get(get_server_config).post(update_server_config))
+        .route("/api/user/prefs", get(get_user_preferences).post(update_user_prefs))
+        .route_layer(axum::middleware::from_fn(talos_auth::axum_auth))
+        .fallback(static_handler)
+        .with_state(state.clone());
+    let public_router = Router::new()
         .route("/api/2fa/signup", post(talos_auth::totp_setup_handler))
         .route("/api/2fa/verify", post(talos_auth::totp_verify_handler))
         .route("/api/2fa/login", post(talos_auth::totp_login_handler))
         .route("/api/password/login", post(talos_auth::password_login_handler))
-        .route("/api/config", get(get_config).post(update_config))
+        .fallback(static_handler)
+        .with_state(state.clone());
+    let app = Router::new()
+        .merge(private_router)
+        .merge(public_router)
         .fallback(static_handler)
         .with_state(state);
+    tokio::spawn(async move {
+        match spawn_cloudflare(8080, cloudflare_token).await {
+            Ok(url) => {
+                println!("Dashboard online at: {}", url);
+            }
+            Err(error) => {
+                eprintln!("Failed to spawn cloudflare: {:?}", error);
+            }
+        }
+    });
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.unwrap();
     println!("Listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();

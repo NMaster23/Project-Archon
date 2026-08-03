@@ -2,11 +2,12 @@ use app_dirs2::{AppDataType, AppInfo, get_app_root};
 use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
 use talos_ai::{gemini_api, manage_soul, self_improvement};
-use talos_auth::{auth, get_auth};
-use talos_core::{ClientToServer, ServerToClient, TalosBus};
+use talos_auth::{auth, get_auth, verify_session_token};
+use talos_core::{ClientToServer, ConfigFile, ServerToClient, TalosBus, UserPreferences};
 use notify_rust::{Notification, Timeout};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use talos_core::TalosBus::UserCredentials;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -14,26 +15,9 @@ const APP_INFO: AppInfo = AppInfo {
 };
 
 pub async fn start_server() -> anyhow::Result<()> {
-    let config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config.json");
-    let config_val = talos_core::TalosConfig::load(&config_path, talos_core::CONFIG_TEMPLATE);
-    let config = Arc::new(RwLock::new(config_val));
-    let backend = config.read().map_err(|e| anyhow::anyhow!("{}", e))?.backend.clone();
-    let use_api = backend == "API";
-    let api_key = if use_api {
-        println!("API selected, fetching auth...");
-        let _data_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
-        if let Some(auth_data) = get_auth(None, 2).await {
-            Some(auth_data.data)
-        } else {
-            auth(None, "INSERT_API_KEY_OR_SECRET", None, None, 2).await;
-            println!("Created user_api.info with dummy data");
-            Some(get_auth(None, 2).await.ok_or_else(|| anyhow::anyhow!("No auth data"))?.data)
-        }
-    } else {
-        println!("OAuth selected, using agy_communicate...");
-        None
-    };
-
+    let server_config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("server_config.json");
+    let server_config = talos_core::ServerConfig::load(&server_config_path, talos_core::CONFIG_TEMPLATE);
+    let config = Arc::new(RwLock::new(server_config));
     let listener = talos_transport::listen("0.0.0.0:9090").await?;
     println!("Server is listening on port 9090");
     let (bus_tx, _) = tokio::sync::broadcast::channel::<talos_core::SystemEvent>(100);
@@ -49,13 +33,9 @@ pub async fn start_server() -> anyhow::Result<()> {
             let _ = self_improvement().await;
         }
     });
-    let api_key_arc = Arc::new(api_key);
     loop {
         let (stream, _) = listener.accept().await?;
-        
         let bus_tx_conn = bus_tx.clone();
-        let api_key_clone = api_key_arc.clone();
-
         tokio::spawn(async move {
             let mut conn = match talos_transport::accept(stream).await {
                 Ok(c) => c,
@@ -64,24 +44,53 @@ pub async fn start_server() -> anyhow::Result<()> {
                     return;
                 }
             };
+            let first_msg = conn.recv_from_client().await;
+            let email = match first_msg {
+                Ok(ClientToServer::UserCredentials(token)) => {
+                    verify_session_token(&token).await
+                }
+                _ => return,
+            };
             if let Err(e) = conn.send_to_client(&ServerToClient::RequestToolRegistration).await {
                 eprintln!("Send error: {}", e);
                 return;
             }
             let (tx_in, mut rx_in) = mpsc::unbounded_channel::<TalosBus>();
             let (tx_out, rx_out) = mpsc::unbounded_channel::<TalosBus>();
-
-            let is_api = api_key_clone.is_some();
-            if let Some(key) = api_key_clone.as_ref() {
-                let tx_in_clone = tx_in.clone();
-                let key_str = key.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = gemini_api(&key_str, rx_out, tx_in_clone).await {
-                        eprintln!("Gemini session error: {:?}", e);
-                    }
-                });
+            let tx_in_clone = tx_in.clone();
+            let email_unwrapped = match email.clone() {
+                Some(e) => e,
+                None => {
+                    eprintln!("Client send invalid token");
+                    return;
+                }
+            };
+            let config_dir = match get_app_root(AppDataType::UserConfig, &APP_INFO) {
+                Ok(dir) => dir,
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    return;
+                },
+            };
+            let prefs_path = config_dir.join(format!("{}_prefs.json", email_unwrapped));
+            let user_prefs = UserPreferences::load(&prefs_path, "{}");
+            let is_api = if user_prefs.backend == "API" {
+                true
+            } else {
+                false
+            };
+            if is_api {
+                let opt_auth_data = get_auth(email.as_deref(), 1).await;
+                if let Some(auth_data) = opt_auth_data {
+                    let api_key = auth_data.data;
+                    tokio::spawn(async move {
+                        gemini_api(&api_key, rx_out, tx_in_clone).await;
+                    });
+                } else {
+                    eprintln!("Authentication data missing");
+                    return;
+                }
             }
-
             loop {
                 tokio::select! {
                     Ok(message) = conn.recv_from_client() => {
@@ -137,8 +146,8 @@ pub async fn start_server() -> anyhow::Result<()> {
 }
 
 pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
-    let config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config.json");
-    let config = Arc::new(RwLock::new(talos_core::TalosConfig::load(&config_path, talos_core::CONFIG_TEMPLATE)));
+    let client_config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config.json");
+    let client_config = Arc::new(RwLock::new(talos_core::ClientConfig::load(&client_config_path, talos_core::CONFIG_TEMPLATE)));
     let (icon_enabled_path, _) = talos_ui::get_icon_paths();
     Notification::new()
         .summary("Microphone Unmuted")
@@ -151,7 +160,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
             eprintln!("Critical Error: {:?}", e);
         }
     });
-    let ws_url = format!("wss://{}", server_addr);
+    let ws_url = format!("ws://{}", server_addr);
     let mut conn = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
             match talos_transport::connect(&ws_url).await {
@@ -168,14 +177,13 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     let stt_disabled = Arc::new(AtomicBool::new(false));
     let stt_disabled_ui = stt_disabled.clone();
     tokio::spawn(async move {
-        talos_ui::client_backend(stt_disabled_ui, ui_rx, config.clone()).await;
+        talos_ui::client_backend(stt_disabled_ui, ui_rx, client_config.clone()).await;
     });
     std::thread::spawn(move || {
         if let Err(e) = talos_audio::stt(stt_tx, Arc::new(AtomicBool::new(false)), stt_disabled) {
             eprintln!("STT error: {:?}", e);
         }
     });
-    
     loop {
         conn = match talos_transport::connect(&ws_url).await {
             Ok(c) => c,
@@ -184,6 +192,18 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
                 continue;
             }
         };
+        let token_path = app_dirs2::get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("session.token");
+        let token = match std::fs::read_to_string(&token_path) {
+            Ok(t) => t.trim().to_string(),
+            Err(_) => {
+                eprintln!("Error: Put session token in {:?}", &token_path);
+                return Ok(())
+            }
+        };
+        if let Err(e) = conn.send_to_server(&ClientToServer::UserCredentials(token)).await {
+            eprintln!("Client credentials error: {:?}", e);
+            continue;
+        }
         loop {
             tokio::select! {
                 Some(msg) = stt_rx.recv() => {

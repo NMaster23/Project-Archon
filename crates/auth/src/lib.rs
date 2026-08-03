@@ -10,8 +10,7 @@ use std::time::Instant;
 use axum::extract::State as AxumState;
 use axum::Json;use axum::http::StatusCode;
 use cocoon::Cocoon;
-use rand_os::OsRng;
-use rand_os::rand_core::RngCore;
+use rand::Rng;
 use totp_rs::qrcodegen_image::image::EncodableLayout;
 use signed_tokens::SigningKey;
 
@@ -94,17 +93,18 @@ impl<'a> App<'a> {
     }
 }
 
-pub async fn auth(email: Option<&str>, input: &str, username: Option<&str>, password: Option<&str>, case: i32) {
-    let proj_dirs = ProjectDirs::from("com", "NMCreator", "Talos").expect("Could not find project directories");
+pub async fn auth(email: Option<&str>, input: &str, username: Option<&str>, password: Option<&str>, case: i32) -> Option<()> {
+    let proj_dirs = ProjectDirs::from("com", "NMCreator", "Talos")?;
     let config_dir = proj_dirs.config_dir();
-    fs::create_dir_all(config_dir).unwrap();
-    let entry = keyring::Entry::new("Talos", "encryption_key").unwrap();
-    let encryption_password: Vec<u8> = match entry.get_password() {
-        Ok(hex_str) => hex::decode(hex_str).unwrap(),
-        Err(_) => {
+    fs::create_dir_all(config_dir).ok()?;
+    let entry = keyring::Entry::new("Talos", "encryption_key").ok()?;
+    
+    let encryption_password: Vec<u8> = match entry.get_password().ok().and_then(|h| hex::decode(h).ok()) {
+        Some(key) => key,
+        None => {
             let mut new_key = [0u8; 32];
-            OsRng.fill_bytes(&mut new_key);
-            entry.set_password(&hex::encode(new_key)).unwrap();
+            rand::rng().fill_bytes(&mut new_key);
+            entry.set_password(&hex::encode(new_key)).ok()?;
             new_key.to_vec()
         }
     };
@@ -114,17 +114,18 @@ pub async fn auth(email: Option<&str>, input: &str, username: Option<&str>, pass
         username: username.map(|s| s.to_string()),
         password: password.map(|s| s.to_string()),
     };
-    let json = serde_json::to_string(&auth_data).unwrap();
-    let encrypted: Vec<u8> = cocoon.wrap(json.as_bytes()).unwrap();
+    let json = serde_json::to_string(&auth_data).ok()?;
+    let encrypted: Vec<u8> = cocoon.wrap(json.as_bytes()).ok()?;
     let file_path = if case == 1 {
-        let e = email.expect("Email required.");
+        let e = email?;
         config_dir.join(format!("{}_totp.info", e))
     } else if case == 2 {
-        config_dir.join("user_api.info")
+        config_dir.join(format!("{}_api.info", email?))
     } else {
-        return;
+        return None;
     };
-    fs::write(file_path, encrypted).unwrap();
+    fs::write(file_path, encrypted).ok()?;
+    Some(())
 }
 
 pub async fn get_auth(email: Option<&str>, case: i32) -> Option<AuthData> {
@@ -147,68 +148,75 @@ pub async fn get_auth(email: Option<&str>, case: i32) -> Option<AuthData> {
     serde_json::from_slice(&decrypted).ok()
 }
 
-pub async fn issue_session_token(email: &str) -> String {
-    let keyring_entry = keyring::Entry::new("Talos", "session_signing_key").unwrap();
+pub async fn issue_session_token(email: &str) -> Option<String> {
+    let keyring_entry = keyring::Entry::new("Talos", "session_signing_key").ok()?;
     let keyring_string = match keyring_entry.get_password() {
         Ok(key) => key,
         Err(_) => {
             let mut new_key = [0u8; 32];
-            OsRng.fill_bytes(&mut new_key);
+            rand::rng().fill_bytes(&mut new_key);
             let hex_key = hex::encode(new_key);
-            keyring_entry.set_password(&hex_key).unwrap();
+            keyring_entry.set_password(&hex_key).ok()?;
             hex_key
         }
     };
     let signing_key = SigningKey::new(keyring_string.as_bytes());
-    let token = signed_tokens::sign(email.as_bytes(), &[signing_key]).unwrap();
-    token.to_string()
+    let token = signed_tokens::sign(email.as_bytes(), &[signing_key]).ok()?;
+    Some(token.to_string())
 }
 
 pub async fn verify_session_token(token: &str) -> Option<String> {
-    let key = keyring::Entry::new("Talos", "session_signing_key").unwrap().get_password().unwrap();
+    let key = keyring::Entry::new("Talos", "session_signing_key").ok()?.get_password().ok()?;
     let signing_key = SigningKey::new(key.as_bytes());
     let verified_token = signed_tokens::verify(token, &[signing_key]).ok()?;
     let session_id = verified_token.payload();
     Some(std::str::from_utf8(session_id).ok()?.to_string())
 }
 
-pub async fn totp_setup(email: &str) -> SetupResponse {
+pub async fn totp_setup(email: &str) -> Option<SetupResponse> {
     let secret = Secret::generate_secret();
     let totp = TOTP::new(
         Algorithm::SHA256,
         6,
         1,
         30,
-        secret.to_bytes().unwrap(),
+        secret.to_bytes().ok()?,
         Some("Project Archon".to_string()),
         email.to_string(),
-    ).unwrap();
-    let qr_base64 = totp.get_qr_base64().unwrap();
+    ).ok()?;
+    let qr_base64 = totp.get_qr_base64().ok()?;
     let secret_str = secret.to_encoded().to_string();
-    SetupResponse {
+    Some(SetupResponse {
         qr_code_base64: qr_base64,
         secret_key: secret_str,
-    }
+    })
 }
 
 pub async fn totp_verify(temp_secret: &str, code: &str, email: &str) -> bool {
-    let totp = TOTP::new(
+    let secret_bytes = match Secret::Encoded(temp_secret.to_string()).to_bytes() {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    let totp = match TOTP::new(
         Algorithm::SHA256,
         6,
         1,
         30,
-        Secret::Encoded(temp_secret.to_string()).to_bytes().unwrap(),
+        secret_bytes,
         Some("Project Archon".to_string()),
         email.to_string(),
-    ).unwrap();
+    ) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
     totp.check_current(code).unwrap_or(false)
 }
 
 pub async fn totp_setup_handler(
     AxumState(state): AxumState<AuthState>,
     Json(payload): Json<SignUpRequest>,
-) -> Json<SetupResponse> {
-    let response = totp_setup(&payload.email).await;
+) -> Result<Json<SetupResponse>, StatusCode> {
+    let response = totp_setup(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
     let data = UserData {
         username: payload.username,
         password: payload.password,
@@ -217,7 +225,7 @@ pub async fn totp_setup_handler(
     if let Ok(mut pending) = state.pending_totp.write() {
         pending.insert(payload.email, data);
     }
-    Json(response)
+    Ok(Json(response))
 }
 
 pub async fn totp_verify_handler(
@@ -225,7 +233,7 @@ pub async fn totp_verify_handler(
     Json(payload): Json<VerifyRequest>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
     let user_data_opt = {
-        let pending = state.pending_totp.read().unwrap();
+        let pending = state.pending_totp.read().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         pending.get(&payload.email).cloned()
     };
     if let Some(user_data) = user_data_opt {
@@ -235,7 +243,7 @@ pub async fn totp_verify_handler(
             if let Ok(mut pending) = state.pending_totp.write() {
                 pending.remove(&payload.email);
             }
-            let generated_token = issue_session_token(&payload.email).await;
+            let generated_token = issue_session_token(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
             Ok(Json(LoginResponse { token: generated_token }))
         } else {
             Err(StatusCode::UNAUTHORIZED)
@@ -269,4 +277,23 @@ pub async fn password_login_handler(
         },
         _ => Err(StatusCode::UNAUTHORIZED)
     }
+}
+
+pub async fn axum_auth(mut request: axum::extract::Request, next: axum::middleware::Next) -> Result<axum::response::Response, StatusCode> {
+    let auth_head = request.headers_mut();
+    if !auth_head.contains_key("Authorization") {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let auth_str = auth_head.get("Authorization").ok_or(StatusCode::UNAUTHORIZED)?.to_str().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !auth_str.starts_with("Bearer ") {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let token = auth_str.strip_prefix("Bearer ").unwrap_or(auth_str);
+    let email = verify_session_token(token).await;
+    if email.is_none() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    request.extensions_mut().insert(email.unwrap_or_default());
+    let response = next.run(request).await;
+    Ok(response)
 }
