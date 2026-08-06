@@ -3,6 +3,7 @@ use wasmtime::{Config, Engine, Store, Result};
 use wasmtime::component::{bindgen, Component};
 use turso::Builder;
 use app_dirs2::{AppInfo, AppDataType, get_app_root};
+use talos_core::TalosBus;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -83,6 +84,18 @@ impl archon::plugin::host_capabilities::Host for PluginState {
                 Ok(Some(value))
             }
             None => Ok(None)
+        }
+    }
+    async fn schedule_task(&mut self, cron_expr: String, task_id: String) -> Result<bool, String> {
+        let send_plugin = self.event_sender.send(TalosBus::PluginData {
+            plugin_id: self.plugin_id.clone(),
+            task_id,
+            cron_expr,
+        });
+        if send_plugin.is_err() {
+            return Err(send_plugin.unwrap_err().to_string());
+        } else {
+            Ok(true)
         }
     }
 }

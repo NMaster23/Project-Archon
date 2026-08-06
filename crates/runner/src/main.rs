@@ -14,6 +14,10 @@ const APP_INFO: AppInfo = AppInfo {
     author: "NMCreator",
 };
 
+pub async fn cron_scheduler() {
+    
+}
+
 pub async fn start_server() -> anyhow::Result<()> {
     let server_config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("server_config.json");
     let server_config = talos_core::ServerConfig::load(&server_config_path, talos_core::CONFIG_TEMPLATE);
@@ -225,11 +229,14 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
                                     });
                                 }
                                 ServerToClient::ExecuteToolCall { call_id, tool_name, args } => {
-                                    let result = talos_executor::call_tool(&tool_name, &args).await.unwrap_or_else(|e| e);
+                                    let (success, result) = match talos_executor::call_tool(&tool_name, &args).await {
+                                        Ok(output) => (true, output),
+                                        Err(e) => (false, e),
+                                    };
                                     conn.send_to_server(&ClientToServer::ToolCallResult {
                                         call_id,
                                         tool_name,
-                                        success: true,
+                                        success,
                                         result
                                     }).await?;
                                 }

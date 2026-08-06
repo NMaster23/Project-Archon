@@ -25,7 +25,7 @@ import SignIn from './SignIn';
 import SignIn2 from './SignIn2';
 import SignUp from './SignUp';
 
-export default function App() {
+export default async function App() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const isSidebarVisible = activeIndex !== null && activeIndex >= 0 && activeIndex <= 11;
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
@@ -36,7 +36,16 @@ export default function App() {
   const [toolHistory, setToolHistory] = useState<string[]>([]);
   const failCountRef = useRef(0);
   const MAX_RETRIES = 100;
-
+  const response = await fetch('/api/config', {
+    method: 'GET',
+  })
+  if (!response.ok) {
+    console.log("Error Code:", response.status);
+    const errorMessage = await response.text();
+    console.log("Error Message:", errorMessage);
+    alert(`Server Error ${response.status}: ${errorMessage}`);
+  }
+  const config = await response.json();
   useEffect(() => {
     const checkServer = () => {
       fetch('/api/status')

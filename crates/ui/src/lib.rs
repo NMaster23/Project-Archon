@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, fs};
 use std::io::ErrorKind;
+use std::path::Path;
 use std::process::Stdio;
 use std::time::Instant;
 use axum::routing::{get, post};
@@ -18,6 +19,7 @@ use tokio::process::Command;
 use tokio::io::AsyncBufReadExt;
 use talos_core::{ClientConfig, ServerConfig, UserPreferences};
 use talos_core::ConfigFile;
+use turso::Builder;
 
 const ICON_ENABLED_BYTES: &[u8] = include_bytes!("..\\..\\..\\assets\\Icon.png");
 const ICON_DISABLED_BYTES: &[u8] = include_bytes!("..\\..\\..\\assets\\Icon_Disabled.png");
@@ -27,6 +29,11 @@ const APP_INFO: AppInfo = AppInfo { name: "Talos", author: "NMCreator" };
 pub struct ServerStatus {
     uptime: u64,
     status: i32,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct PermissionPayload {
+    pub access_level: i32,
 }
 
 #[derive(RustEmbed)]
@@ -39,6 +46,7 @@ pub struct AppState {
     auth_state: talos_auth::AuthState,
     bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>,
     config: Arc<std::sync::RwLock<ServerConfig>>,
+    db_conn: turso::Connection,
 }
 
 impl axum::extract::FromRef<AppState> for talos_auth::AuthState {
@@ -213,7 +221,7 @@ pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: mpsc::Unbound
                             .body("Until Alt+M is pressed again Voice Control will be unavailable.")
                             .icon(icon_disabled_path.to_str().unwrap_or(""))
                             .timeout(Timeout::Milliseconds(6000))
-                            .show().unwrap();
+                            .show().ok();
                         stt_disabled.store(true, Ordering::Relaxed);
                     }
                     return None;
@@ -313,9 +321,9 @@ pub async fn spawn_cloudflare(port: u16, token: Option<String>) -> Result<String
             .stderr(Stdio::piped())
             .spawn()
             .expect("failed to spawn cloudflare (Auto Domain)");
-        let stderr_handle = child.stderr.take().unwrap();
+        let stderr_handle = child.stderr.take().expect("Failed to take cloudflare (Auto Domain)");
         let mut reader = BufReader::new(stderr_handle).lines();
-        while let Some(line) = reader.next_line().await.unwrap() {
+        while let Some(line) = reader.next_line().await.expect("failed to read line") {
             if line.contains("trycloudflare.com") && let Some(start_index) = line.find("https://") {
                 let substring = &line[start_index..];
                 if let Some(index) = substring.find(|c: char| c.is_whitespace() || c == '|') {
@@ -328,20 +336,63 @@ pub async fn spawn_cloudflare(port: u16, token: Option<String>) -> Result<String
     }
 }
 
+pub async fn get_plugin_config(axum::extract::Path(plugin_id): axum::extract::Path<String>, State(state): State<AppState>) -> Response {
+    let conn = state.db_conn;
+    let mut rows = conn.query("SELECT key, value FROM plugins WHERE plugin_id = ?", (plugin_id,)).await.expect("query failed");
+    let mut settings = serde_json::Map::new();
+    while let Ok(Some(row)) = rows.next().await {
+        let key: String = row.get(0).expect("Failed to get key");
+        let raw_val: String = row.get(1).expect("Failed to get value");
+        let parsed_val = serde_json::from_str(&raw_val).expect("Failed to parse json");
+        settings.insert(key, parsed_val);
+    }
+    Json(serde_json::Value::Object(settings)).into_response()
+}
+
+pub async fn update_plugin_config(axum::extract::Path(plugin_id): axum::extract::Path<String>, Json(payload): Json<serde_json::Value>, State(state): State<AppState>) -> Response {
+    let conn = state.db_conn;
+    if let Some(settings) = payload.as_object() {
+        for (key, parsed_val) in settings.iter() {
+            let value_str = parsed_val.to_string();
+            let _ = conn.execute("INSERT OR REPLACE INTO plugins (plugin_id, key, value) VALUES (?, ?, ?)", (plugin_id.clone(), key.clone(), value_str)).await.expect("Could not insert plugin");
+        }
+        return StatusCode::OK.into_response();
+    } else {
+        return (StatusCode::BAD_REQUEST, "Payload must be JSON").into_response();
+    }
+}
+
+pub async fn update_plugin_permissions(axum::extract::Path(plugin_id): axum::extract::Path<String>, State(state): State<AppState>, Json(payload): Json<PermissionPayload>) -> Response {
+    let conn = state.db_conn;
+    conn.execute(
+        "INSERT OR REPLACE INTO plugin_permissions (plugin_id, access_level) VALUES (?, ?)",
+        (plugin_id, payload.access_level)
+    ).await.expect("Could not update plugin permissions");
+    return StatusCode::OK.into_response();
+}
+
 pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>, config: Arc<std::sync::RwLock<ServerConfig>>) {
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).expect("Failed to get user config");
+    let plugin_dir = app_root.join("Plugins");
+    std::fs::create_dir_all(&plugin_dir).expect("Failed to create plugin directory");
+    let plugin_db = plugin_dir.join("plugins.db");
+    let db = Builder::new_local(plugin_db.to_str().expect("Failed to convert db path to str")).build().await.expect("Failed to create/access plugin database");
+    let conn = db.connect().expect("Failed to connect to database");
     let state = AppState {
         start_time: Instant::now(),
         auth_state: talos_auth::AuthState::new(),
         bus_tx,
-        config: config.clone()
+        config: config.clone(),
+        db_conn: conn,
     };
     let config = state.config.clone();
-    let cloudflare_token = config.read().unwrap().cloudflare_token.clone();
+    let cloudflare_token = config.read().expect("Cloudflare config error").cloudflare_token.clone();
     let private_router = Router::new()
         .route("/api/status", get(get_server_status))
         .route("/api/talosbus", get(get_talosbus_ws))
         .route("/api/config", get(get_server_config).post(update_server_config))
         .route("/api/user/prefs", get(get_user_preferences).post(update_user_prefs))
+        .route("/api/plugins/:plugin_id/permissions", post(update_plugin_permissions))
         .route_layer(axum::middleware::from_fn(talos_auth::axum_auth))
         .fallback(static_handler)
         .with_state(state.clone());
@@ -367,7 +418,7 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
             }
         }
     });
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.unwrap();
-    println!("Listening on {}", listener.local_addr().unwrap());
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.expect("Failed to bind");
+    println!("Listening on {}", listener.local_addr().expect("Could not get local address"));
     axum::serve(listener, app).await.unwrap();
 }

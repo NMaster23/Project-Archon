@@ -12,6 +12,7 @@ pub enum TalosBus {
     ToolCallResult { call_id:  String, tool_name: String, result: String },
     Shutdown,
     RenderWidget { plugin_id: String, widget_id: String, layout_json: String },
+    PluginData { plugin_id: String, task_id: String, cron_expr: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

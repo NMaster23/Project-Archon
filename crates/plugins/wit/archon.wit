@@ -5,6 +5,7 @@ interface host-capabilities {
     fetch-external: func(url: string, headers-json: string, body: string) -> result<string, string>;
     db-set: func(key: string, value: string) -> result<bool, string>;
     db-get: func(key: string) -> result<option<string>, string>;
+    schedule-task: func(cron-expr: string, task-id: string) -> result<bool, string>;
 }
 
 interface channel-provider {
@@ -26,6 +27,10 @@ interface security-policy {
     validate-output: func(llm-output: string) -> result<string, string>;
 }
 
+interface timing {
+    on-timer-tick: func(task-id: string);
+}
+
 world archon-extension {
     import host-capabilities;
     import log: func(msg: string);
@@ -36,4 +41,5 @@ world archon-extension {
     export memory-engine;
     export model-provider;
     export security-policy;
+    export timing;
 }

@@ -13,6 +13,7 @@ use cocoon::Cocoon;
 use rand::Rng;
 use totp_rs::qrcodegen_image::image::EncodableLayout;
 use signed_tokens::SigningKey;
+use argon2::{self, Config};
 
 #[derive(Clone)]
 pub struct UserData {
@@ -136,7 +137,7 @@ pub async fn get_auth(email: Option<&str>, case: i32) -> Option<AuthData> {
             let e = email?;
             config_dir.join(format!("{}_totp.info", e))
         },
-        2 => config_dir.join("user_api.info"),
+        2 => config_dir.join(format!("{}_api.info", email?)),
         _ => return None,
     };
     let encrypted = fs::read(file_path).ok()?;
@@ -160,7 +161,8 @@ pub async fn issue_session_token(email: &str) -> Option<String> {
             hex_key
         }
     };
-    let signing_key = SigningKey::new(keyring_string.as_bytes());
+    let raw_key = hex::decode(&keyring_string).ok()?;
+    let signing_key = SigningKey::new(raw_key);
     let token = signed_tokens::sign(email.as_bytes(), &[signing_key]).ok()?;
     Some(token.to_string())
 }

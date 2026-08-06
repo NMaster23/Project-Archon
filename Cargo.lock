@@ -135,7 +135,7 @@ dependencies = [
  "strip-ansi-escapes",
  "talos_core",
  "tokio",
- "turso 0.8.0-pre.1",
+ "turso 0.8.0-pre.2",
 ]
 
 [[package]]
@@ -2036,6 +2036,18 @@ name = "critical-section"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
+
+[[package]]
+name = "cron"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5dcd6f69605c2956916ce24e8af637b754964c9a83f4662d3a2361654cdba09"
+dependencies = [
+ "chrono",
+ "once_cell",
+ "phf 0.11.3",
+ "winnow 0.7.15",
+]
 
 [[package]]
 name = "crossbeam-channel"
@@ -9949,6 +9961,7 @@ dependencies = [
  "app_dirs2",
  "audio",
  "auth",
+ "cron",
  "executor",
  "notify-rust",
  "talos_core",
@@ -11068,17 +11081,17 @@ dependencies = [
 
 [[package]]
 name = "turso"
-version = "0.8.0-pre.1"
+version = "0.8.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff5ff5ff2ed1280fe40122900c3153a7a10a552470b0a27aee67dfa2312da934"
+checksum = "f8e4c60e5377490f890ad63889719e4b15a4b2734c22c2be0750a930ad155171"
 dependencies = [
  "mimalloc",
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
- "turso_core 0.8.0-pre.1",
- "turso_sdk_kit 0.8.0-pre.1",
- "turso_sync_sdk_kit 0.8.0-pre.1",
+ "turso_core 0.8.0-pre.2",
+ "turso_sdk_kit 0.8.0-pre.2",
+ "turso_sync_sdk_kit 0.8.0-pre.2",
 ]
 
 [[package]]
@@ -11154,9 +11167,9 @@ dependencies = [
 
 [[package]]
 name = "turso_core"
-version = "0.8.0-pre.1"
+version = "0.8.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a29ab6d5a49ba2c756279891a7fa160e3460af167983f283b9a55e3747be03a"
+checksum = "126a369027e3f8d5736f871267e9a79fe18e081cf4023b520d3a45097bc9e841"
 dependencies = [
  "aegis",
  "aes",
@@ -11214,9 +11227,9 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
- "turso_ext 0.8.0-pre.1",
- "turso_macros 0.8.0-pre.1",
- "turso_parser 0.8.0-pre.1",
+ "turso_ext 0.8.0-pre.2",
+ "turso_macros 0.8.0-pre.2",
+ "turso_parser 0.8.0-pre.2",
  "twox-hash",
  "uncased",
  "uuid 1.24.0",
@@ -11236,13 +11249,13 @@ dependencies = [
 
 [[package]]
 name = "turso_ext"
-version = "0.8.0-pre.1"
+version = "0.8.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed8f1265e0b6ee172063cdc93099f7f1a0f1a7af140bd16c47aa563c65d36e2e"
+checksum = "2cca983d5255440f8074a017c1bebe4bb387f079a43fedc179f3de1e6f3e3def"
 dependencies = [
  "chrono",
  "getrandom 0.4.3",
- "turso_macros 0.8.0-pre.1",
+ "turso_macros 0.8.0-pre.2",
 ]
 
 [[package]]
@@ -11258,9 +11271,9 @@ dependencies = [
 
 [[package]]
 name = "turso_macros"
-version = "0.8.0-pre.1"
+version = "0.8.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86ed2bab22e6d8ff94f1e966525fb14f192737977475ae57bcd0fc4c021b3589"
+checksum = "0cd0d06b919b0c6a517451c05a855368fecf101eeb87b4eaf299a3daa97ad2e2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -11284,9 +11297,9 @@ dependencies = [
 
 [[package]]
 name = "turso_parser"
-version = "0.8.0-pre.1"
+version = "0.8.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bdac2a5acfeb180bf7e86369fdfd40ae08a893c8e1c642d85e72a85c9dbf4df"
+checksum = "d6c143277cc1387ba02aed82856a20c43108f8aaa4caf55201f73b229db08fcf"
 dependencies = [
  "bitflags 2.13.0",
  "memchr",
@@ -11294,7 +11307,7 @@ dependencies = [
  "strum 0.26.3",
  "strum_macros 0.26.4",
  "thiserror 2.0.18",
- "turso_macros 0.8.0-pre.1",
+ "turso_macros 0.8.0-pre.2",
 ]
 
 [[package]]
@@ -11316,9 +11329,9 @@ dependencies = [
 
 [[package]]
 name = "turso_sdk_kit"
-version = "0.8.0-pre.1"
+version = "0.8.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a97954dbc713a658419930c5ac81ac8d440c6b4e5eecbbc98d691e14f4294caf"
+checksum = "18a3a833a9757e14890e7be3f91b9bededc068a4038aabf065db283205977507"
 dependencies = [
  "bindgen 0.69.5",
  "env_logger 0.11.11",
@@ -11326,9 +11339,9 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "turso_core 0.8.0-pre.1",
- "turso_ext 0.8.0-pre.1",
- "turso_sdk_kit_macros 0.8.0-pre.1",
+ "turso_core 0.8.0-pre.2",
+ "turso_ext 0.8.0-pre.2",
+ "turso_sdk_kit_macros 0.8.0-pre.2",
 ]
 
 [[package]]
@@ -11344,9 +11357,9 @@ dependencies = [
 
 [[package]]
 name = "turso_sdk_kit_macros"
-version = "0.8.0-pre.1"
+version = "0.8.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49a0c40d0b7b1e2dde0b97551ea1942ea7577b10a9a008cf80f3499a788cd984"
+checksum = "3f7bd6f95e5701fc19f354c2c008a6bbd91a45261973b1bb53c84846869a0a0f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -11378,9 +11391,9 @@ dependencies = [
 
 [[package]]
 name = "turso_sync_engine"
-version = "0.8.0-pre.1"
+version = "0.8.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a36777322701095c77566a9d629eedfdb31ecaf0df912ab2d1a76ddac8dcb6ce"
+checksum = "da743ad475ed263a3ce566099c2445e98eb7b8f90e95a363db4b2559e72cd62c"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -11394,8 +11407,8 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tracing",
- "turso_core 0.8.0-pre.1",
- "turso_parser 0.8.0-pre.1",
+ "turso_core 0.8.0-pre.2",
+ "turso_parser 0.8.0-pre.2",
  "uuid 1.24.0",
 ]
 
@@ -11420,9 +11433,9 @@ dependencies = [
 
 [[package]]
 name = "turso_sync_sdk_kit"
-version = "0.8.0-pre.1"
+version = "0.8.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40aef354be5c345e0c26a991333a89b33b44281c661b1eb35625ac33b0353e96"
+checksum = "7c2c9adc424f837e5fb8c316a0df7bb53b8ceaef89d64b29342afdc8372e77c2"
 dependencies = [
  "bindgen 0.69.5",
  "env_logger 0.11.11",
@@ -11431,10 +11444,10 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "turso_core 0.8.0-pre.1",
- "turso_sdk_kit 0.8.0-pre.1",
- "turso_sdk_kit_macros 0.8.0-pre.1",
- "turso_sync_engine 0.8.0-pre.1",
+ "turso_core 0.8.0-pre.2",
+ "turso_sdk_kit 0.8.0-pre.2",
+ "turso_sdk_kit_macros 0.8.0-pre.2",
+ "turso_sync_engine 0.8.0-pre.2",
 ]
 
 [[package]]
@@ -11521,6 +11534,7 @@ dependencies = [
  "talos_core",
  "tokio",
  "tower-http 0.7.0",
+ "turso 0.8.0-pre.2",
 ]
 
 [[package]]
@@ -13251,6 +13265,9 @@ name = "winnow"
 version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "winnow"

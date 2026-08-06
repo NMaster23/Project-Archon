@@ -294,6 +294,16 @@ pub async fn gemini_communicate_speech(
         if speech.is_empty() {
             continue;
         }
+        if let Ok(memories) = retrieve_memories(&speech, 3).await {
+            if !memories.is_empty() {
+                let combined_memories = memories.join("\n- ");
+                speech = format!(
+                    "Relevant context form previous conversations:\n- {}\n\nUser Input: {}",
+                    combined_memories,
+                    speech.trim(),
+                )
+            }
+        };
         session.send_text(&speech).await?;
         let _ = tx_in.send(TalosBus::TerminalOutput(format!("You: {}", speech)));
         let mut gemini_response = String::new();
@@ -449,15 +459,43 @@ pub async fn agy_communicate(
     Ok(())
 }
 
+pub async fn agy_backend(mut rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosBus>, tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
+    let agy_session = AgySession::new(tx_in.clone())?;
+    while let Some(event) = rx_out.recv().await {
+        match event {
+            TalosBus::VoiceTranscript(speech) => {
+                let mut prompt = speech.trim().to_string();
+                if prompt.is_empty() {
+                    continue;
+                }
+                if let Ok(memories) = retrieve_memories(&prompt, 3).await {
+                    if !memories.is_empty() {
+                        let combined_memories = memories.join("\n- ");
+                        prompt = format!(
+                            "Relevant context form previous conversations:\n- {}\n\nUser Input: {}",
+                            combined_memories,
+                            speech.trim(),
+                        )
+                    }
+                }
+                tx_in.send(TalosBus::TerminalOutput(format!("You: {}", prompt))).unwrap();
+                agy_session.execute(&prompt);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 pub async fn create_config() -> Result<(), Box<dyn std::error::Error>> {
-    let app_root = get_app_root(AppDataType::UserData, &APP_INFO)?;
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
     let config_file = app_root.join("config.json");
     fs::write(config_file, talos_core::CONFIG_TEMPLATE)?;
     Ok(())
 }
 
 pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
-    let app_root = get_app_root(AppDataType::UserData, &APP_INFO)?;
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
     let chat_location = app_root.join(".history").join("chats.db");
     if !chat_location.exists() {
         fs::create_dir_all(app_root.join(".history"))?;
@@ -500,7 +538,7 @@ pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) -> Result<(), B
             TalosBus::AiResponse(ai_response) => {
                 conn.execute(
                     "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
-                    (session_id.clone(), "user", ai_response, "ai"),
+                    (session_id.clone(), "assistant", ai_response, "ai"),
                 ).await?;
             }
             TalosBus::ActionIntent { tool, args } => {
@@ -518,7 +556,7 @@ pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) -> Result<(), B
             }
             TalosBus::ScreenCapture(_) => {
                 conn.execute(
-                    "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3)",
+                    "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",
                     (session_id.clone(), "system", "screencap", "system"),
                 ).await?;
             }
@@ -533,15 +571,27 @@ pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) -> Result<(), B
 }
 
 pub async fn memory_parser(raw_output: &str) -> (String, String, String, String) {
-    let fact_idx = raw_output.find("FACTS:").unwrap_or(raw_output.len());
-    let state_idx = raw_output.find("STATE:").unwrap_or(raw_output.len());
-    let entity_idx = raw_output.find("ENTITIES:").unwrap_or(raw_output.len());
-    let summary_idx = raw_output.find("SUMMARY:").unwrap_or(raw_output.len());
-    let facts_output = raw_output[(fact_idx + 6)..state_idx].trim();
-    let state_output = raw_output[(state_idx + 6)..entity_idx].trim();
-    let entity_output = raw_output[(entity_idx + 9)..summary_idx].trim();
-    let summary_output = raw_output[(summary_idx + 8)..].trim();
-    (facts_output.to_string(), state_output.to_string(), entity_output.to_string(), summary_output.to_string())
+    let fact_idx = raw_output.find("FACTS:");
+    let state_idx = raw_output.find("STATE:");
+    let entity_idx = raw_output.find("ENTITIES:");
+    let summary_idx = raw_output.find("SUMMARY:");
+    let facts_output = match (fact_idx, state_idx) {
+        (Some(f), Some(s)) if f + 6 <= s => raw_output[(f + 6)..s].trim(),
+        _ => "",
+    }.to_string();
+    let state_output = match (state_idx, entity_idx) {
+        (Some(s), Some(e)) if s + 6 <= e => raw_output[(s + 6)..e].trim(),
+        _ => "",
+    }.to_string();
+    let entity_output = match (entity_idx, summary_idx) {
+        (Some(e), Some(s)) if e + 9 <= s => raw_output[(e + 9)..s].trim(),
+        _ => "",
+    }.to_string();
+    let summary_output = match summary_idx {
+        Some(s) if s + 8 <= raw_output.len() => raw_output[(s + 8)..].trim(),
+        _ => "",
+    }.to_string();
+    (facts_output, state_output, entity_output, summary_output)
 }
 
 pub async fn manage_memory() -> Result<(), Box<dyn std::error::Error>> {
@@ -716,4 +766,17 @@ pub async fn self_improvement() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&agy_skill_dir)?;
     fs::write(agy_skill_dir.join("SKILL.md"), &skill_content)?;
     Ok(())
+}
+
+pub async fn retrieve_memories(query: &str, limit: u32) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let conn = get_db_conn().await?;
+    let mut embed_model = TextEmbedding::try_new(TextInitOptions::new(EmbeddingModel::AllMiniLML6V2))?;
+    let embeddings = embed_model.embed(vec![query], None)?;
+    let query_vector = format!("{:?}", &embeddings[0]);
+    let mut rows = conn.query("SELECT content FROM memories ORDER BY vector_distance_cos(vector, vector32(?1)) LIMIT ?2", (query_vector, limit)).await?;
+    let mut relevant_memories = Vec::new();
+    while let Some(row) = rows.next().await? {
+        relevant_memories.push(row.get::<String>(0)?);
+    }
+    Ok(relevant_memories)
 }

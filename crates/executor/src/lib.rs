@@ -329,7 +329,6 @@ pub async fn encode(mut image: RgbaImage) -> Result<(Vec<u8>, Vec<(i32, i32, Str
         let tag = format!("[{}]", id);
         draw_text_mut(&mut image, image::Rgba([0, 255, 0, 255]), min_x, min_y - 15, PxScale::from(14.0), &font, &tag);
         click_targets.push((x_cent, y_cent, line.to_string()));
-        image.write_to(&mut buffer, Jpeg).map_err(|e| e.to_string())?;
     }
     image
         .write_to(&mut buffer, Jpeg)
