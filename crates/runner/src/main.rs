@@ -95,6 +95,13 @@ pub async fn start_server() -> anyhow::Result<()> {
                     eprintln!("Authentication data missing");
                     return;
                 }
+            } else {
+                let tx_in_clone = tx_in.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = talos_ai::agy_backend(rx_out, tx_in_clone).await {
+                        eprintln!("AGY CLI Error: {:?}", e);
+                    }
+                });
             }
             loop {
                 tokio::select! {
@@ -108,12 +115,7 @@ pub async fn start_server() -> anyhow::Result<()> {
                                     if is_api {
                                         let _ = tx_out.send(TalosBus::VoiceTranscript(processed));
                                     } else {
-                                        let tx_in_clone = tx_in.clone();
-                                        tokio::spawn(async move {
-                                            if let Err(e) = talos_ai::agy_communicate(true, tx_in_clone, &processed).await {
-                                                eprintln!("AGY CLI Error: {:?}", e);
-                                            }
-                                        });
+                                        tx_out.send(TalosBus::VoiceTranscript(processed));
                                     }
                                 }
                             }
@@ -214,9 +216,9 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
             let model = load_model(
                 TtsConfig::new(ModelType::Qwen3Tts)
                     .with_model_path("./models/Qwen3-TTS")
-            )?;
+            ).unwrap();
             while let Some(text) = tts_rx.recv().await {
-                if let Err(e) = talos_audio::tts(&text.clone(), model).await {
+                if let Err(e) = talos_audio::tts(&text.clone(), &model).await {
                     eprintln!("TTS Error: {}", e);
                 }
             }

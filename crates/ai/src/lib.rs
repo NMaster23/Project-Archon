@@ -543,7 +543,7 @@ pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) -> Result<(), B
                     (session_id.clone(), "assistant", ai_response, "ai"),
                 ).await?;
             }
-            TalosBus::ActionIntent { tool, args } => {
+            TalosBus::ActionIntent { call_id, tool, args } => {
                 let tool_mem = format!("Used tool: {}, with args: {}", tool, args);
                 conn.execute(
                     "INSERT INTO chats (session_id, role, content, method) VALUES (?1, ?2, ?3, ?4)",

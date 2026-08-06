@@ -8,7 +8,7 @@ pub enum TalosBus {
     AiResponse(String),
     UserCredentials(String),
     TerminalOutput(String),
-    ActionIntent { tool: String, args: String },
+    ActionIntent { call_id: String, tool: String, args: String },
     ToolCallResult { call_id:  String, tool_name: String, result: String },
     Shutdown,
     RenderWidget { plugin_id: String, widget_id: String, layout_json: String },

@@ -117,7 +117,7 @@ pub fn stt(
     Ok(())
 }
 
-pub async fn tts(text: &str, model: Box<dyn TtsModel>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn tts(text: &str, model: &Box<dyn TtsModel>) -> Result<(), Box<dyn std::error::Error>> {
     let audio = model.synthesize(
         &SynthesisRequest::new(text)
             .with_language("English")
