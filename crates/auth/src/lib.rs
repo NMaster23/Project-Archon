@@ -170,7 +170,8 @@ pub async fn issue_session_token(email: &str) -> Option<String> {
 
 pub async fn verify_session_token(token: &str) -> Option<String> {
     let key = keyring::Entry::new("Talos", "session_signing_key").ok()?.get_password().ok()?;
-    let signing_key = SigningKey::new(key.as_bytes());
+    let hex_key = hex::decode(&key).ok()?;
+    let signing_key = SigningKey::new(hex_key);
     let verified_token = signed_tokens::verify(token, &[signing_key]).ok()?;
     let session_id = verified_token.payload();
     Some(std::str::from_utf8(session_id).ok()?.to_string())

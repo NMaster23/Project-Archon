@@ -208,6 +208,14 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
             eprintln!("Client credentials error: {:?}", e);
             continue;
         }
+        let (tts_tx, mut tts_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        tokio::spawn(async move {
+            while let Some(text) = tts_rx.recv().await {
+                if let Err(e) = talos_audio::tts(&text.clone()).await {
+                    eprintln!("TTS Error: {}", e);
+                }
+            }
+        });
         loop {
             tokio::select! {
                 Some(msg) = stt_rx.recv() => {
@@ -222,11 +230,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
                             match msg {
                                 ServerToClient::AiResponse(text) | ServerToClient::TerminalOutput(text) => {
                                     let _ = ui_tx.send(text.clone());
-                                    tokio::spawn(async move {
-                                        if let Err(e) = talos_audio::tts(&text.clone()).await {
-                                            eprintln!("TTS Error: {}", e);
-                                        }
-                                    });
+                                    let _ = tts_tx.send(text.clone());
                                 }
                                 ServerToClient::ExecuteToolCall { call_id, tool_name, args } => {
                                     let (success, result) = match talos_executor::call_tool(&tool_name, &args).await {

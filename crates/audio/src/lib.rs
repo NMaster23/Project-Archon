@@ -18,7 +18,7 @@ pub fn stt(
     stt_disabled: Arc<AtomicBool>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut model = StreamingModel::load(
-        &PathBuf::from("models\\moonshine-streaming-medium-onnx"),
+        &PathBuf::from("models/moonshine-streaming-medium-onnx"),
         4,
         &Quantization::default(),
     )
@@ -98,7 +98,7 @@ pub fn stt(
                         speech_buffer.extend(&vad_chunk);
                     }
                 }
-                if silence_chunks == 20 && !speech_buffer.is_empty() {
+                if silence_chunks >= 20 && !speech_buffer.is_empty() {
                     let result = model.transcribe(&speech_buffer, &TranscribeOptions::default());
                     if let Ok(res) = result {
                         let result_clone = res.text.clone();
@@ -108,8 +108,8 @@ pub fn stt(
                         {
                             break;
                         }
-                        speech_buffer.clear();
                     }
+                    speech_buffer.clear();
                 }
             }
         }
@@ -131,18 +131,23 @@ pub async fn tts(text: &str) -> Result<(), Box<dyn std::error::Error>> {
     let host = cpal::default_host();
     let device = host.default_output_device().expect("no output device available");
     let config: cpal::StreamConfig = device.default_output_config().map_err(|e| e.to_string())?.into();
+    let channels = config.channels as usize;
     let sample_rate = audio.sample_rate;
     let mut current_idx = 0;
     let audio_len = audio.len();
     let stream = device.build_output_stream(
         config,
         move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-            for sample in data.iter_mut() {
-                if current_idx < audio_len {
-                    *sample = audio.samples[current_idx];
+            for frame in data.chunks_mut(channels) {
+                let sample_val = if current_idx < audio_len {
+                    let samples = audio.samples[current_idx];
                     current_idx += 1;
+                    samples
                 } else {
-                    *sample = 0.0;
+                    0.0
+                };
+                for sample in frame.iter_mut() {
+                    *sample = sample_val;
                 }
             }
         },

@@ -267,11 +267,11 @@ pub async fn tools() -> Result<(), BoxError> {
                     Ok(i) => i.to_rgba8(),
                     Err(e) => return Ok(CallToolResult::error(e.to_string())),
                 };
-                let encoded = match encode(img).await {
+                let edited = match image_edit(img).await {
                     Ok(e) => e,
                     Err(e) => return Ok(CallToolResult::error(e)),
                 };
-                let base64_img = general_purpose::STANDARD.encode(&encoded.0);
+                let base64_img = general_purpose::STANDARD.encode(&edited.0);
                 Ok(CallToolResult::image(base64_img, "image/jpeg"))
             } else {
                 Ok(CallToolResult::error("Failed to capture any displays.".to_string()))
@@ -295,7 +295,7 @@ pub async fn tools() -> Result<(), BoxError> {
     Ok(())
 }
 
-pub async fn encode(mut image: RgbaImage) -> Result<(Vec<u8>, Vec<(i32, i32, String)>), String> {
+pub async fn image_edit(mut image: RgbaImage) -> Result<(Vec<u8>, Vec<(i32, i32, String)>), String> {
     let mut buffer = Cursor::new(Vec::new());
     let grid_color = image::Rgba([255, 0, 0, 255]);
     let spacing = 100;
@@ -385,6 +385,36 @@ pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
             let text = parsed.get("type").or(parsed.get("text")).and_then(|v| v.as_str()).ok_or("Missing text")?;
             enigo.text(text).map_err(|e| e.to_string())?;
             Ok("Typed text".into())
+        }
+        "view_screen" => {
+            let config = CaptureConfig {
+                webp_config: WebPConfig::high_quality(),
+                include_cursor: true,
+                use_hardware_acceleration: true,
+                ..Default::default()
+            };
+            let mut screenshot = match WebPScreenshot::with_config(config) {
+                Ok(s) => s,
+                Err(e) => return Err(e.to_string()),
+            };
+            let results = screenshot.capture_all_displays();
+            if let Some(Ok(capture)) = results.into_iter().find(|r| r.is_ok()) {
+                let img = match image::load_from_memory(&capture.data) {
+                    Ok(i) => i.to_rgba8(),
+                    Err(e) => return Err(e.to_string()),
+                };
+                let edited = match image_edit(img).await {
+                    Ok(e) => e,
+                    Err(e) => return Err(e.to_string()),
+                };
+                let base64_img = general_purpose::STANDARD.encode(&edited.0);
+                Ok(json!({
+                    "image": base64_img,
+                    "targets": edited.1
+                }).to_string())
+            } else {
+                Err("Failed to capture any displays.".to_string())
+            }
         }
         _ => Err("Unknown tool".into()),
     }

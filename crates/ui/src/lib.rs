@@ -21,8 +21,8 @@ use talos_core::{ClientConfig, ServerConfig, UserPreferences};
 use talos_core::ConfigFile;
 use turso::Builder;
 
-const ICON_ENABLED_BYTES: &[u8] = include_bytes!("..\\..\\..\\assets\\Icon.png");
-const ICON_DISABLED_BYTES: &[u8] = include_bytes!("..\\..\\..\\assets\\Icon_Disabled.png");
+const ICON_ENABLED_BYTES: &[u8] = include_bytes!("../../../assets/Icon.png");
+const ICON_DISABLED_BYTES: &[u8] = include_bytes!("../../../assets/Icon_Disabled.png");
 const APP_INFO: AppInfo = AppInfo { name: "Talos", author: "NMCreator" };
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -231,9 +231,11 @@ pub async fn client_backend(stt_disabled: Arc<AtomicBool>, _ui_rx: mpsc::Unbound
             _ => Some(event),
         }
     };
-    if let Err(error) = grab(callback) {
-        eprintln!("Failed to grab keyboard: {:?}", error);
-    }
+    tokio::task::spawn_blocking(move || {
+        if let Err(error) = grab(callback) {
+            eprintln!("Failed to grab keyboard: {:?}", error);
+        }
+    });
 }
 
 pub async fn install_cloudflare() {
@@ -349,7 +351,7 @@ pub async fn get_plugin_config(axum::extract::Path(plugin_id): axum::extract::Pa
     Json(serde_json::Value::Object(settings)).into_response()
 }
 
-pub async fn update_plugin_config(axum::extract::Path(plugin_id): axum::extract::Path<String>, Json(payload): Json<serde_json::Value>, State(state): State<AppState>) -> Response {
+pub async fn update_plugin_config(axum::extract::Path(plugin_id): axum::extract::Path<String>, State(state): State<AppState>, Json(payload): Json<serde_json::Value>) -> Response {
     let conn = state.db_conn;
     if let Some(settings) = payload.as_object() {
         for (key, parsed_val) in settings.iter() {
@@ -393,6 +395,7 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
         .route("/api/config", get(get_server_config).post(update_server_config))
         .route("/api/user/prefs", get(get_user_preferences).post(update_user_prefs))
         .route("/api/plugins/:plugin_id/permissions", post(update_plugin_permissions))
+        .route("/api/plugins/:plugin_id/config", get(get_plugin_config).post(update_plugin_config))
         .route_layer(axum::middleware::from_fn(talos_auth::axum_auth))
         .fallback(static_handler)
         .with_state(state.clone());
