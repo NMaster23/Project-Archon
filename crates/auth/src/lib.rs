@@ -110,10 +110,11 @@ pub async fn auth(email: Option<&str>, input: &str, username: Option<&str>, pass
         }
     };
     let mut cocoon = Cocoon::new(&encryption_password);
+    let encrypted_password = argon2::hash_encoded(&password?.as_bytes(), &username?.as_bytes(), &Config::default()).expect("Failed to hash password");
     let auth_data = AuthData {
         data: input.to_string(),
         username: username.map(|s| s.to_string()),
-        password: password.map(|s| s.to_string()),
+        password: Some(encrypted_password.to_string()),
     };
     let json = serde_json::to_string(&auth_data).ok()?;
     let encrypted: Vec<u8> = cocoon.wrap(json.as_bytes()).ok()?;
@@ -219,9 +220,10 @@ pub async fn totp_setup_handler(
     Json(payload): Json<SignUpRequest>,
 ) -> Result<Json<SetupResponse>, StatusCode> {
     let response = totp_setup(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    let encrypted_password = argon2::hash_encoded(&payload.password.as_bytes(), &payload.username.as_bytes(), &Config::default()).expect("Failed to hash password");
     let data = UserData {
         username: payload.username,
-        password: payload.password,
+        password: encrypted_password,
         secret: response.secret_key.clone()
     };
     if let Ok(mut pending) = state.pending_totp.write() {
@@ -274,7 +276,7 @@ pub async fn password_login_handler(
 ) -> Result<Json<bool>, StatusCode> {
     let secret = get_auth(Some(&payload.email), 1).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
     match &secret.password {
-        Some(saved_password) if saved_password == &payload.password => {
+        Some(saved_password) if argon2::verify_encoded(&saved_password, payload.password.as_bytes()).unwrap_or(false) => {
             Ok(Json(true))
         },
         _ => Err(StatusCode::UNAUTHORIZED)
