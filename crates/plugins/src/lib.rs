@@ -214,7 +214,7 @@ pub async fn install_plugin(plugin_url: &str) -> Result<(), Box<dyn std::error::
     let file_name = &parsed_url
         .path_segments()
         .and_then(|mut s| s.next_back())
-        .unwrap_or(&fallback_plugin);
+        .unwrap_or(fallback_plugin.as_str());
     let mut response = reqwest::get(parsed_url.clone()).await?;
     let mut file = tokio::fs::File::create(plugin_dir.join(file_name)).await?;
     while let Some(chunk) = response.chunk().await? {

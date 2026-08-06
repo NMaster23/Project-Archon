@@ -382,7 +382,7 @@ pub async fn call_tool(tool_name: &str, args: &str) -> Result<String, String> {
             Ok("Pressed keys".into())
         }
         "key_type" => {
-            let text = parsed.get("type").or(parsed.get("text")).and_then(|v| v.as_str()).ok_or("Missing text")?;
+            let text = parsed.get("text").and_then(|v| v.as_str()).ok_or("Missing text")?;
             enigo.text(text).map_err(|e| e.to_string())?;
             Ok("Typed text".into())
         }

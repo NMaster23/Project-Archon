@@ -9993,6 +9993,7 @@ name = "talos"
 version = "0.1.0"
 dependencies = [
  "ai",
+ "any-tts",
  "anyhow",
  "app_dirs2",
  "audio",

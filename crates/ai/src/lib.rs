@@ -7,7 +7,7 @@ use std::fs;
 use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::Command;
+use tokio::process::Command;
 use std::string::ToString;
 use std::time::Duration;
 use talos_core::TalosBus;
@@ -298,7 +298,7 @@ pub async fn gemini_communicate_speech(
             if !memories.is_empty() {
                 let combined_memories = memories.join("\n- ");
                 speech = format!(
-                    "Relevant context form previous conversations:\n- {}\n\nUser Input: {}",
+                    "Relevant context from previous conversations:\n- {}\n\nUser Input: {}",
                     combined_memories,
                     speech.trim(),
                 )
@@ -399,14 +399,16 @@ pub async fn agy_setup(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> 
     if cfg!(target_os = "windows") {
         let _ = Command::new("cmd")
             .args(["/C", "curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd && install.cmd && del install.cmd && agy"])
-            .status()?;
+            .status()
+            .await?;
     } else if cfg!(any(target_os = "linux", target_os = "macos")) {
         let _ = Command::new("sh")
             .args([
                 "-c",
                 "curl -fsSL https://antigravity.google/cli/install.sh | bash && agy",
             ])
-            .status()?;
+            .status()
+            .await?;
     } else {
         println!("Unsupported OS");
     }
@@ -433,7 +435,7 @@ pub async fn agy_communicate(
         cmd.args(["--dangerously-skip-permissions", "-c", "-p", input.trim()]);
     }
     
-    match cmd.output() {
+    match cmd.output().await {
         Ok(agy_output) => {
             let mut text = String::from_utf8(agy_output.stdout).unwrap_or_default();
             let stderr = String::from_utf8(agy_output.stderr).unwrap_or_default();
@@ -472,13 +474,13 @@ pub async fn agy_backend(mut rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosB
                     if !memories.is_empty() {
                         let combined_memories = memories.join("\n- ");
                         prompt = format!(
-                            "Relevant context form previous conversations:\n- {}\n\nUser Input: {}",
+                            "Relevant context from previous conversations:\n- {}\n\nUser Input: {}",
                             combined_memories,
                             speech.trim(),
                         )
                     }
                 }
-                tx_in.send(TalosBus::TerminalOutput(format!("You: {}", prompt))).unwrap();
+                tx_in.send(TalosBus::TerminalOutput(format!("You: {}", prompt))).ok();
                 agy_session.execute(&prompt);
             }
             _ => {}

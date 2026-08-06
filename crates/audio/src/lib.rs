@@ -9,7 +9,7 @@ use transcribe_rs::{SpeechModel, TranscribeOptions};
 use webrtc_vad::SampleRate::Rate16kHz;
 use webrtc_vad::VadMode::Quality;
 use webrtc_vad::*;
-use any_tts::{load_model, ModelType, SynthesisRequest, TtsConfig};
+use any_tts::{load_model, ModelType, SynthesisRequest, TtsConfig, TtsModel};
 use rubato::{Resampler, SincFixedIn, InterpolationType, InterpolationParameters, WindowFunction};
 
 pub fn stt(
@@ -117,11 +117,7 @@ pub fn stt(
     Ok(())
 }
 
-pub async fn tts(text: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let model = load_model(
-        TtsConfig::new(ModelType::Qwen3Tts)
-            .with_model_path("./models/Qwen3-TTS")
-    )?;
+pub async fn tts(text: &str, model: Box<dyn TtsModel>) -> Result<(), Box<dyn std::error::Error>> {
     let audio = model.synthesize(
         &SynthesisRequest::new(text)
             .with_language("English")

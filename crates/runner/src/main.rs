@@ -8,6 +8,7 @@ use notify_rust::{Notification, Timeout};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use talos_core::TalosBus::UserCredentials;
+use any_tts::{load_model, ModelType, SynthesisRequest, TtsConfig, TtsModel};
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -210,8 +211,12 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
         }
         let (tts_tx, mut tts_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         tokio::spawn(async move {
+            let model = load_model(
+                TtsConfig::new(ModelType::Qwen3Tts)
+                    .with_model_path("./models/Qwen3-TTS")
+            )?;
             while let Some(text) = tts_rx.recv().await {
-                if let Err(e) = talos_audio::tts(&text.clone()).await {
+                if let Err(e) = talos_audio::tts(&text.clone(), model).await {
                     eprintln!("TTS Error: {}", e);
                 }
             }

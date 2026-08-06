@@ -16,3 +16,4 @@ talos-transport = { path = "../transport", package = "transport" }
 app_dirs2 = "2.5.5"
 notify-rust = "4.18.0"
 cron = "0.17.0"
+any-tts = "0.1.2"
