@@ -143,6 +143,13 @@ pub async fn start_server() -> anyhow::Result<()> {
                                 println!("Terminal: {}", txt);
                                 let _ = conn.send_to_client(&ServerToClient::TerminalOutput(txt)).await;
                             }
+                            TalosBus::ActionIntent { call_id, tool, args } => {
+                                let _ = conn.send_to_client(&ServerToClient::ExecuteToolCall {
+                                    call_id,
+                                    tool_name: tool,
+                                    args
+                                }).await;
+                            }
                             _ => {}
                         }
                     }

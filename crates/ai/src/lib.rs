@@ -13,8 +13,8 @@ use std::time::Duration;
 use talos_core::TalosBus;
 use tokio::sync::mpsc;
 use app_dirs2::{AppDataType, AppInfo, get_app_root};
-use mistralrs::ModelBuilder;
-use tokio::sync::mpsc::UnboundedReceiver;
+use mistralrs::{Model, ModelBuilder};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use turso::Builder;
 use fastembed::{TextEmbedding, TextInitOptions, EmbeddingModel};
 
@@ -81,6 +81,37 @@ Skill Structure:
 <failure_logs>
 {failures}
 </failure_logs>"#;
+
+pub const REACT_PROMPT: &str = r#"You are Talos, an expert developer assistant.
+You operate in a strict ReAct (Reasoning and Acting) loop to solve user requests.
+
+You have access to the following tools:
+{tools}
+
+HOW TO BEHAVE:
+You must resolve the user's request by following this exact cycle:
+1. Thought: Explain your reasoning, analyze the current state, and plan your next move.
+2. Action: Execute a tool by outputting a strict JSON object.
+3. Observation: (The system will provide the tool's output to you).
+... (Repeat Thought -> Action -> Observation until the task is complete)
+4. Final Answer: Provide the final response to the user.
+
+FORMATTING RULES:
+When you need to use a tool, your output MUST follow this exact format:
+Thought: [Your step-by-step reasoning]
+Action: {"action": "tool_name", "args": {"arg1": "value"}}
+
+When you have completed the task or need to ask the user a clarifying question, your output MUST follow this exact format:
+Thought: I have the information I need.
+Final Answer: [Your comprehensive response or question to the user]
+
+CRITICAL CONSTRAINTS:
+- ALWAYS include a "Thought:" line before an Action or Final Answer.
+- Output exactly ONE Action per turn.
+- Do NOT wrap your Action in Markdown code blocks (e.g., no ```json). Output raw JSON.
+- Stop generating text immediately after outputting an Action. Wait for the Observation.
+- Never fake an Observation; the system will provide it.
+"#;
 
 pub struct StreamingSource {
     receiver: std::sync::mpsc::Receiver<f32>,
@@ -326,6 +357,11 @@ pub async fn gemini_communicate_speech(
                     for tool_call in tool_calls {
                         let msg = format!("AI called tool: {} with args: {}", tool_call.name, tool_call.args);
                         let _ = tx_in.send(TalosBus::TerminalOutput(msg));
+                        let _ = tx_in.send(TalosBus::ActionIntent {
+                            call_id: tool_call.id,
+                            tool: tool_call.name,
+                            args: tool_call.args.to_string(),
+                        });
                     }
                 }
                 ServerEvent::TurnComplete => {
@@ -781,4 +817,33 @@ pub async fn retrieve_memories(query: &str, limit: u32) -> Result<Vec<String>, B
         relevant_memories.push(row.get::<String>(0)?);
     }
     Ok(relevant_memories)
+}
+
+pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: UnboundedReceiver<TalosBus>, input: &str, model: &mistralrs::Model) -> Result<(), Box<dyn std::error::Error>> {
+    let mut history = format!("System: {}\n\nUser: {}", REACT_PROMPT, input);
+    loop {
+        let output = model.chat(history.clone()).await?;
+        if output.starts_with("{") {
+            let json: serde_json::Value = serde_json::from_str(&output)?;
+            let action = json["action"].as_str().unwrap();
+            let args = json["args"].to_string();
+            let call_id = format!("call_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis() as u32);
+            tx_in.send(TalosBus::ActionIntent {
+                call_id: call_id.clone(),
+                tool: action.to_string(),
+                args: args.to_string(),
+            });
+            while let Some(msg) = rx_out.recv().await {
+                if let TalosBus::ToolCallResult { call_id: response_id, result, .. } = msg {
+                    if response_id == call_id {
+                        history.push_str(&format!("\nAssistant: {}\nObservation: {}", output, result));
+                        break;
+                    }
+                }
+            }
+        } else {
+            tx_in.send(TalosBus::AiResponse(history.clone()))?;
+            break Ok(());
+        }
+    }
 }
