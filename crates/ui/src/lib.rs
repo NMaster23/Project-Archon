@@ -2,13 +2,14 @@ use rdev::{grab, Event, EventType, Key};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, fs};
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Instant;
 use axum::routing::{get, post};
 use axum::{http::{header, StatusCode, Uri}, response::{IntoResponse, Response}, Json, Router, Extension};
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use rust_embed::RustEmbed;
 use tokio::sync::mpsc;
@@ -20,6 +21,7 @@ use tokio::io::AsyncBufReadExt;
 use talos_core::{ClientConfig, ServerConfig, UserPreferences};
 use talos_core::ConfigFile;
 use turso::Builder;
+use talos_auth::verify_session_token;
 
 const ICON_ENABLED_BYTES: &[u8] = include_bytes!("../../../assets/Icon.png");
 const ICON_DISABLED_BYTES: &[u8] = include_bytes!("../../../assets/Icon_Disabled.png");
@@ -108,7 +110,15 @@ pub async fn handle_ws_talosbus(mut socket: WebSocket, bus_tx: tokio::sync::broa
 pub async fn get_talosbus_ws(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> Response {
+    let token = match params.get("token") {
+        Some(token) => token,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+    if verify_session_token(token).await.is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
     ws.on_upgrade(move |socket| handle_ws_talosbus(socket, state.bus_tx))
 }
 
@@ -394,17 +404,15 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
         .route("/api/talosbus", get(get_talosbus_ws))
         .route("/api/config", get(get_server_config).post(update_server_config))
         .route("/api/user/prefs", get(get_user_preferences).post(update_user_prefs))
-        .route("/api/plugins/:plugin_id/permissions", post(update_plugin_permissions))
-        .route("/api/plugins/:plugin_id/config", get(get_plugin_config).post(update_plugin_config))
+        .route("/api/plugins/{plugin_id}/permissions", post(update_plugin_permissions))
+        .route("/api/plugins/{plugin_id}/config", get(get_plugin_config).post(update_plugin_config))
         .route_layer(axum::middleware::from_fn(talos_auth::axum_auth))
-        .fallback(static_handler)
         .with_state(state.clone());
     let public_router = Router::new()
         .route("/api/2fa/signup", post(talos_auth::totp_setup_handler))
         .route("/api/2fa/verify", post(talos_auth::totp_verify_handler))
         .route("/api/2fa/login", post(talos_auth::totp_login_handler))
         .route("/api/password/login", post(talos_auth::password_login_handler))
-        .fallback(static_handler)
         .with_state(state.clone());
     let app = Router::new()
         .merge(private_router)

@@ -842,7 +842,7 @@ pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: UnboundedR
                 }
             }
         } else {
-            tx_in.send(TalosBus::AiResponse(history.clone()))?;
+            tx_in.send(TalosBus::AiResponse(output.clone()))?;
             break Ok(());
         }
     }

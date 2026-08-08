@@ -24,6 +24,7 @@ import Settings from './Settings';
 import SignIn from './SignIn';
 import SignIn2 from './SignIn2';
 import SignUp from './SignUp';
+import { useAuthStore } from './authStore';
 
 export default function App() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -48,6 +49,7 @@ export default function App() {
           return;
         }
         const config = await response.json();
+        console.log("Fetched config:", config);
     } catch (error) {
         console.error("Error fetching config:", error);
         alert("Error fetching config. Please check the console for details.");
@@ -85,7 +87,8 @@ export default function App() {
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/talosbus`;
+    const token = useAuthStore.getState().getActiveToken();
+    const wsUrl = `${protocol}//${window.location.host}/api/talosbus?token=${token}`;
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
