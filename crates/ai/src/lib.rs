@@ -889,7 +889,7 @@ pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut Unbou
     }
 }
 
-pub async fn local_backend(mut rx_out: UnboundedReceiver<TalosBus>, tx_in: UnboundedSender<TalosBus>, token_budget: u32) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn local_backend(mut rx_out: UnboundedReceiver<TalosBus>, tx_in: UnboundedSender<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
     let model = ModelBuilder::new("meta-llama/Llama-3.2-1B").build().await?;
     while let Some(msg) = rx_out.recv().await {
         if let TalosBus::VoiceTranscript(input) = msg {

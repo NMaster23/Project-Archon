@@ -79,13 +79,8 @@ pub async fn start_server() -> anyhow::Result<()> {
             };
             let prefs_path = config_dir.join(format!("{}_prefs.json", email_unwrapped));
             let user_prefs = UserPreferences::load(&prefs_path, "{}");
-            let token_budget = 0;
-            let is_api = if user_prefs.backend == "API" {
-                true
-            } else {
-                false
-            };
-            if is_api {
+            let token_budget = user_prefs.max_output_tokens;
+            if user_prefs.backend == "API" {
                 let opt_auth_data = get_auth(email.as_deref(), 1).await;
                 if let Some(auth_data) = opt_auth_data {
                     let api_key = auth_data.data;
@@ -96,11 +91,18 @@ pub async fn start_server() -> anyhow::Result<()> {
                     eprintln!("Authentication data missing");
                     return;
                 }
-            } else {
+            } else if user_prefs.backend == "AGY" {
                 let tx_in_clone = tx_in.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = talos_ai::local_backend(rx_out, tx_in_clone, token_budget).await {
+                    if let Err(e) = talos_ai::agy_backend(rx_out, tx_in_clone).await {
                         eprintln!("AGY CLI Error: {:?}", e);
+                    }
+                });
+            } else if user_prefs.backend == "LOCAL" {
+                let tx_in_clone = tx_in.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = talos_ai::local_backend(rx_out, tx_in_clone).await {
+                        eprintln!("Local Backend Error: {:?}", e);
                     }
                 });
             }
@@ -113,22 +115,16 @@ pub async fn start_server() -> anyhow::Result<()> {
                                 let processed = text.trim().to_string();
                                 if !processed.is_empty() {
                                     println!("User: {}", processed);
-                                    if is_api {
-                                        let _ = tx_out.send(TalosBus::VoiceTranscript(processed));
-                                    } else {
-                                        tx_out.send(TalosBus::VoiceTranscript(processed));
-                                    }
+                                    let _ = tx_out.send(TalosBus::VoiceTranscript(processed));
                                 }
                             }
                             ClientToServer::ToolRegistration { tools } => println!("Client registered tools {:?}", tools),
                             ClientToServer::ToolCallResult { call_id, tool_name, success: _, result } => {
-                                if is_api {
-                                    tx_out.send(TalosBus::ToolCallResult {
-                                        call_id,
-                                        tool_name,
-                                        result,
-                                    });
-                                }
+                                let _ = tx_out.send(TalosBus::ToolCallResult {
+                                    call_id,
+                                    tool_name,
+                                    result,
+                                });
                             }
                             _ => {}
                         }
