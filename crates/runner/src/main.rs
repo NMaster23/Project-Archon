@@ -79,6 +79,7 @@ pub async fn start_server() -> anyhow::Result<()> {
             };
             let prefs_path = config_dir.join(format!("{}_prefs.json", email_unwrapped));
             let user_prefs = UserPreferences::load(&prefs_path, "{}");
+            let token_budget = 0;
             let is_api = if user_prefs.backend == "API" {
                 true
             } else {
@@ -89,7 +90,7 @@ pub async fn start_server() -> anyhow::Result<()> {
                 if let Some(auth_data) = opt_auth_data {
                     let api_key = auth_data.data;
                     tokio::spawn(async move {
-                        gemini_api(&api_key, rx_out, tx_in_clone).await;
+                        gemini_api(&api_key, rx_out, tx_in_clone, token_budget).await;
                     });
                 } else {
                     eprintln!("Authentication data missing");
@@ -98,7 +99,7 @@ pub async fn start_server() -> anyhow::Result<()> {
             } else {
                 let tx_in_clone = tx_in.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = talos_ai::agy_backend(rx_out, tx_in_clone).await {
+                    if let Err(e) = talos_ai::local_backend(rx_out, tx_in_clone, token_budget).await {
                         eprintln!("AGY CLI Error: {:?}", e);
                     }
                 });

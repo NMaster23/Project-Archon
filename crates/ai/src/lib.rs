@@ -13,10 +13,12 @@ use std::time::Duration;
 use talos_core::TalosBus;
 use tokio::sync::mpsc;
 use app_dirs2::{AppDataType, AppInfo, get_app_root};
+use app_dirs2::AppDataType::UserConfig;
 use mistralrs::{Model, ModelBuilder};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use turso::Builder;
 use fastembed::{TextEmbedding, TextInitOptions, EmbeddingModel};
+use tokio::io::AsyncWriteExt;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -113,17 +115,54 @@ CRITICAL CONSTRAINTS:
 - Never fake an Observation; the system will provide it.
 "#;
 
+pub const SUCCESS_SKILL_PROMPT: &str = r#"You are an Expert AI Behavior Analyst. You are given a transcript of a highly successful execution chain where an AI agent perfectly solved a user's problem.
+
+Your objective is to deconstruct this winning strategy and codify it into a reusable "Skill Cheatsheet" that future AI agents can instantly understand and execute.
+
+### Instructions:
+1. Analyze the transcript to identify the core user intent.
+2. Map the exact sequence of tools used.
+3. Extract the critical reasoning steps, decision points, and data transformations.
+4. Output your analysis STRICTLY using the Markdown template provided below.
+
+### Output Template:
+# Skill: [Create a clear, descriptive 3-5 word title]
+
+**Trigger Intent:** [1-2 sentences describing the specific user problem or request that should trigger this skill]
+
+### Tool Chain Sequence
+[List the exact sequence of tools used, e.g., ToolA -> ToolB -> ToolC]
+
+### Step-by-Step Execution Strategy
+* **Step 1: [Action Taken]** - [Explain the specific reasoning and what data was passed/extracted]
+* **Step 2: [Action Taken]** - [Explain the specific reasoning and what data was passed/extracted]
+* [Continue for all essential steps]
+
+### Key Insights & Pitfalls to Avoid
+* [Bullet points of any clever maneuvers, parameter specifics, or logical leaps the agent made that are crucial for success]
+
+### Constraints:
+* NO conversational filler or pleasantries.
+* NO preambles or postscripts.
+* Output ONLY the populated Markdown template.
+
+***
+[SUCCESSFUL EXECUTION CHAIN START]
+{successes}
+[SUCCESSFUL EXECUTION CHAIN END]
+"#;
+
 pub struct StreamingSource {
     receiver: std::sync::mpsc::Receiver<f32>,
 }
 
 pub struct AgySession {
-    tx: mpsc::UnboundedSender<String>,
+    tx: UnboundedSender<String>,
 }
 
 impl AgySession {
     pub fn new(
-        talos_bus_tx: mpsc::UnboundedSender<TalosBus>,
+        talos_bus_tx: UnboundedSender<TalosBus>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
@@ -273,7 +312,7 @@ impl rodio::Source for StreamingSource {
 pub async fn gemini_communicate_speech(
     mut session: Session,
     mut rx_out: UnboundedReceiver<TalosBus>,
-    tx_in: mpsc::UnboundedSender<TalosBus>,
+    tx_in: UnboundedSender<TalosBus>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let handle = rodio::DeviceSinkBuilder::open_default_sink().map_err(|e| e.to_string())?;
     let player = rodio::Player::connect_new(handle.mixer());
@@ -384,7 +423,8 @@ pub async fn gemini_communicate_speech(
 pub async fn gemini_api(
     api_key: &str,
     rx_out: UnboundedReceiver<TalosBus>,
-    tx_in: mpsc::UnboundedSender<TalosBus>,
+    tx_in: UnboundedSender<TalosBus>,
+    token_budget: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ai_management_prompt = r#"You are Talos, an advanced, voice-operated Developer Assistant. You have direct, real-time access to the user's host operating system and terminal through an AGY CLI bridge.
 
@@ -420,6 +460,7 @@ Operational Directives & Safety Rules
             }),
             generation_config: Some(GenerationConfig {
                 response_modalities: Some(vec![Modality::Audio, Modality::Text]),
+                max_output_tokens: Some(token_budget),
                 ..Default::default()
             }),
             ..Default::default()
@@ -454,7 +495,7 @@ pub async fn agy_setup(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> 
 
 pub async fn agy_communicate(
     new_chat: bool,
-    talos_bus_tx: mpsc::UnboundedSender<TalosBus>,
+    talos_bus_tx: UnboundedSender<TalosBus>,
     input: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = if cfg!(target_os = "windows") {
@@ -497,7 +538,7 @@ pub async fn agy_communicate(
     Ok(())
 }
 
-pub async fn agy_backend(mut rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosBus>, tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn agy_backend(mut rx_out: UnboundedReceiver<TalosBus>, tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
     let agy_session = AgySession::new(tx_in.clone())?;
     while let Some(event) = rx_out.recv().await {
         match event {
@@ -526,14 +567,14 @@ pub async fn agy_backend(mut rx_out: tokio::sync::mpsc::UnboundedReceiver<TalosB
 }
 
 pub async fn create_config() -> Result<(), Box<dyn std::error::Error>> {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let app_root = get_app_root(UserConfig, &APP_INFO)?;
     let config_file = app_root.join("config.json");
     fs::write(config_file, talos_core::CONFIG_TEMPLATE)?;
     Ok(())
 }
 
 pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let app_root = get_app_root(UserConfig, &APP_INFO)?;
     let chat_location = app_root.join(".history").join("chats.db");
     if !chat_location.exists() {
         fs::create_dir_all(app_root.join(".history"))?;
@@ -633,7 +674,7 @@ pub async fn memory_parser(raw_output: &str) -> (String, String, String, String)
 }
 
 pub async fn manage_memory() -> Result<(), Box<dyn std::error::Error>> {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let app_root = get_app_root(UserConfig, &APP_INFO)?;
     let chat_location = app_root.join(".history").join("chats.db");
     let db = Builder::new_local(chat_location.to_str().ok_or("Invalid path")?).build().await?;
     let conn = db.connect()?;
@@ -730,7 +771,7 @@ pub async fn manage_memory() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub async fn manage_soul() -> Result<(), Box<dyn std::error::Error>> {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let app_root = get_app_root(UserConfig, &APP_INFO)?;
     let history_dir = app_root.join(".history");
     if !history_dir.exists() {
         fs::create_dir_all(&history_dir)?;
@@ -765,7 +806,7 @@ pub async fn manage_soul() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub async fn get_db_conn() -> Result<turso::Connection, Box<dyn std::error::Error>> {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let app_root = get_app_root(UserConfig, &APP_INFO)?;
     let hist_dir = app_root.join(".history");
     if !hist_dir.exists() {
         fs::create_dir_all(&hist_dir)?;
@@ -780,7 +821,7 @@ pub async fn self_improvement() -> Result<(), Box<dyn std::error::Error>> {
     let model = ModelBuilder::new("meta-llama/Llama-3.2-1B")
         .build()
         .await?;
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let app_root = get_app_root(UserConfig, &APP_INFO)?;
     let conn = get_db_conn().await?;
     let mut error_rows = conn.query(
         "SELECT content FROM chats WHERE content LIKE '%Error%' ORDER BY id DESC LIMIT 3",
@@ -819,7 +860,7 @@ pub async fn retrieve_memories(query: &str, limit: u32) -> Result<Vec<String>, B
     Ok(relevant_memories)
 }
 
-pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: UnboundedReceiver<TalosBus>, input: &str, model: &mistralrs::Model) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut UnboundedReceiver<TalosBus>, input: &str, model: &Model) -> Result<(), Box<dyn std::error::Error>> {
     let mut history = format!("System: {}\n\nUser: {}", REACT_PROMPT, input);
     loop {
         let output = model.chat(history.clone()).await?;
@@ -846,4 +887,47 @@ pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: UnboundedR
             break Ok(());
         }
     }
+}
+
+pub async fn local_backend(mut rx_out: UnboundedReceiver<TalosBus>, tx_in: UnboundedSender<TalosBus>, token_budget: u32) -> Result<(), Box<dyn std::error::Error>> {
+    let model = ModelBuilder::new("meta-llama/Llama-3.2-1B").build().await?;
+    while let Some(msg) = rx_out.recv().await {
+        if let TalosBus::VoiceTranscript(input) = msg {
+            if let Err(e) = react_loop(tx_in.clone(), &mut rx_out, &input, &model).await {
+                eprintln!("ReAct Error: {}", e);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn success_analysis() -> Result<(), Box<dyn std::error::Error>> {
+    let app_root = get_app_root(UserConfig, &APP_INFO)?;
+    let model = ModelBuilder::new("meta-llama/Llama-3.2-1B").build().await?;
+    let conn = get_db_conn().await?;
+    let mut rows = conn.query(
+        "SELECT content FROM chats WHERE content NOT LIKE '%Error%' AND length(content) > 300 ORDER BY id DESC LIMIT 3",
+        ()
+    ).await?;
+    let mut successes = String::new();
+    while let Some(row) = rows.next().await? {
+        let success_text: String = row.get(0)?;
+        successes.push_str(&success_text);
+        successes.push_str("\n---\n");
+    };
+    let prompt = SUCCESS_SKILL_PROMPT.replace("{successes}", &successes);
+    let skill_contents = model.chat(prompt).await?;
+    if !skill_contents.is_empty() {
+        let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis();
+        let skill_name = format!("{}_skill.md", timestamp);
+        let skill_dirname = format!("{}_skill", skill_name);
+        let skill_path = app_root.join("Agent").join("Skills");
+        fs::create_dir_all(&skill_path)?;
+        fs::write(skill_path.join(&skill_name), &skill_contents)?;
+        let current_dir = std::env::current_dir()?;
+        let agy_skill_dir = current_dir.join(".gemini").join("skills").join(&skill_name);
+        fs::create_dir_all(&agy_skill_dir)?;
+        fs::write(agy_skill_dir.join("SKILL.md"), &skill_contents)?;
+    }
+    Ok(())
 }
