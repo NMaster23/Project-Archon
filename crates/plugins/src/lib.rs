@@ -1,9 +1,10 @@
 use tokio::io::AsyncWriteExt;
 use wasmtime::{Config, Engine, Store, Result};
-use wasmtime::component::{bindgen, Component};
+use wasmtime::component::{bindgen, Component, ResourceTable};
 use turso::Builder;
 use app_dirs2::{AppInfo, AppDataType, get_app_root};
 use talos_core::TalosBus;
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiView, WasiCtxView};
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -27,6 +28,17 @@ pub struct PluginState {
     pub db_pool: turso::Connection,
     pub http_client: reqwest::Client,
     pub event_sender: tokio::sync::mpsc::UnboundedSender<talos_core::TalosBus>,
+    pub wasi_ctx: WasiCtx,
+    pub table: ResourceTable,
+}
+
+impl WasiView for PluginState {
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi_ctx,
+            table: &mut self.table,
+        }
+    }
 }
 
 /*
@@ -155,12 +167,19 @@ pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::Talo
     let engine = Engine::new(&config)?;
     let mut plugins = Vec::new();
     tokio::fs::create_dir_all(&plugin_dir).await?;
-    let mut entries = tokio::fs::read_dir(plugin_dir).await?;
+    let mut entries = tokio::fs::read_dir(plugin_dir.clone()).await?;
     let mut linker = wasmtime::component::Linker::<PluginState>::new(&engine);
+    wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
     ArchonExtension::add_to_linker::<PluginState, wasmtime::component::HasSelf<PluginState>>(&mut linker, |state| state)?;
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("wasm") {
+            let mut wasi_builder = WasiCtxBuilder::new();
+            wasi_builder.inherit_stdout().inherit_stderr().preopened_dir(&plugin_dir, "/workspace", DirPerms::all(), FilePerms::all()).unwrap();
+            
+            let wasi_ctx = wasi_builder.build();
+            let table = ResourceTable::new();
+
             let component = match Component::from_file(&engine, &path) {
                 Ok(c) => c,
                 Err(e) => {
@@ -174,6 +193,8 @@ pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::Talo
                 db_pool: conn.clone(),
                 http_client: reqwest::Client::new(),
                 event_sender: sender.clone(),
+                wasi_ctx,
+                table,
             };
             let mut store = Store::new(&engine, plugin_data);
             let instance = match ArchonExtension::instantiate_async(&mut store, &component, &linker).await {
