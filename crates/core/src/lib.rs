@@ -59,7 +59,7 @@ pub enum SystemEvent {
 pub const CONFIG_TEMPLATE: &str = r#"{
   "_comment": "=== TALOS MASTER CONFIGURATION ===",
 
-  "backend": "OAuth",
+  "backend": "AGY",
   "dashboard_port": 3000,
   "run_in_background": false,
   "start_on_boot": false,

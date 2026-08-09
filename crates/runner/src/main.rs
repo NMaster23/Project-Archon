@@ -9,6 +9,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use talos_core::TalosBus::UserCredentials;
 use any_tts::{load_model, ModelType, SynthesisRequest, TtsConfig, TtsModel};
+use talos_ui::get_user_preferences;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
@@ -184,8 +185,8 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     }).await.map_err(|_| anyhow::anyhow!("Timed out waiting for client to initialize"))?;
     let (stt_tx, mut stt_rx) = mpsc::unbounded_channel::<TalosBus>();
     let (ui_tx, ui_rx) = mpsc::unbounded_channel::<String>();
-
-    let stt_disabled = Arc::new(AtomicBool::new(false));
+    let user_stt = client_config.read().unwrap().stt_disabled_by_default;
+    let stt_disabled = Arc::new(AtomicBool::new(user_stt));
     let stt_disabled_ui = stt_disabled.clone();
     tokio::spawn(async move {
         talos_ui::client_backend(stt_disabled_ui, ui_rx, client_config.clone()).await;

@@ -430,7 +430,7 @@ pub async fn gemini_api(
     tx_in: UnboundedSender<TalosBus>,
     token_budget: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let ai_management_prompt = r#"You are Talos, an advanced, voice-operated Developer Assistant. You have direct, real-time access to the user's host operating system and terminal through an AGY CLI bridge.
+    let raw_ai_management_prompt = r#"You are Talos, an advanced, voice-operated Developer Assistant. You have direct, real-time access to the user's host operating system and terminal through an AGY CLI bridge.
 
 When the user asks you to inspect files, write code, run commands, or manage the local project, respond with the exact instruction you want AGY to execute. Do not claim you ran a command yourself; the host app forwards your completed response to AGY and displays the result.
 
@@ -441,6 +441,8 @@ Operational Directives & Safety Rules
     Chain Actions Logically: You can request multiple terminal/file actions in one instruction when they belong together.
 
     Destructive Actions: If a user asks you to delete files, format drives, or run potentially dangerous commands, ask for confirmation before issuing the AGY instruction."#;
+    let skills = load_skills().await;
+    let ai_management_prompt = format!("{}\n\nSkills:\n{}", raw_ai_management_prompt, skills);
     let executor_tools = executor::gemini_api_mcp().await;
     let gemini_tools = vec![gemini_live::Tool::FunctionDeclarations(
         executor_tools.into_iter().filter_map(|raw| {
@@ -865,25 +867,15 @@ pub async fn retrieve_memories(query: &str, limit: u32) -> Result<Vec<String>, B
 }
 
 pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut UnboundedReceiver<TalosBus>, input: &str, model: &Model) -> Result<(), Box<dyn std::error::Error>> {
-    let mut loaded_skills = String::new();
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
-    let user_skills_dir = app_root.join("Agent").join("Skills");
-    
-    if user_skills_dir.exists() {
-        if let Ok(mut entries) = tokio::fs::read_dir(user_skills_dir).await {
-            while let Ok(Some(entry)) = entries.next_entry().await {
-                if let Ok(content) = tokio::fs::read_to_string(entry.path()).await {
-                    loaded_skills.push_str(&content);
-                    loaded_skills.push_str("\n\n");
-                }
-            }
+    let loaded_skills = load_skills().await;
+    let active_prompt = REACT_PROMPT.replace("{loaded_skills}", &loaded_skills);
+    let mut enriched_input = input.trim().to_string();
+    if let Ok(mem) = retrieve_memories(&enriched_input, 3).await {
+        if !mem.is_empty() {
+            enriched_input = format!("Context: {}\nInput: {}", mem.join("\n- "), enriched_input);
         }
     }
-    if loaded_skills.is_empty() {
-        loaded_skills = "No skills learned".to_string();
-    }
-    let active_prompt = REACT_PROMPT.replace("{loaded_skills}", &loaded_skills);
-    let mut history = format!("System: {}\n\nUser: {}", REACT_PROMPT, input);
+    let mut history = format!("System: {}\n\nUser: {}", active_prompt, enriched_input);
     loop {
         let output = model.chat(history.clone()).await?;
         if output.starts_with("{") {
@@ -952,4 +944,25 @@ pub async fn success_analysis() -> Result<(), Box<dyn std::error::Error>> {
         fs::write(agy_skill_dir.join("SKILL.md"), &skill_contents)?;
     }
     Ok(())
+}
+
+pub async fn load_skills() -> String {
+    let mut loaded_skills = String::new();
+    if let Ok(app_root) = get_app_root(UserConfig, &APP_INFO) {
+        let user_skills_dir = app_root.join("Agent").join("Skills");
+        if user_skills_dir.exists() {
+            if let Ok(mut entries) = tokio::fs::read_dir(user_skills_dir).await {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    if let Ok(content) = tokio::fs::read_to_string(entry.path()).await {
+                        loaded_skills.push_str(&content);
+                        loaded_skills.push_str("\n\n");
+                    }
+                }
+            }
+        }
+    }
+    if loaded_skills.is_empty() {
+        loaded_skills = "No skills learned".to_string();
+    }
+    loaded_skills
 }
