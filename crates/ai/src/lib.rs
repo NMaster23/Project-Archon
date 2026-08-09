@@ -90,6 +90,10 @@ You operate in a strict ReAct (Reasoning and Acting) loop to solve user requests
 You have access to the following tools:
 {tools}
 
+YOUR SKILLS / PAST MISTAKES:
+You have learned the following skills from past failures. You MUST obey these instructions:
+{skills}
+
 HOW TO BEHAVE:
 You must resolve the user's request by following this exact cycle:
 1. Thought: Explain your reasoning, analyze the current state, and plan your next move.
@@ -861,6 +865,24 @@ pub async fn retrieve_memories(query: &str, limit: u32) -> Result<Vec<String>, B
 }
 
 pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut UnboundedReceiver<TalosBus>, input: &str, model: &Model) -> Result<(), Box<dyn std::error::Error>> {
+    let mut loaded_skills = String::new();
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let user_skills_dir = app_root.join("Agent").join("Skills");
+    
+    if user_skills_dir.exists() {
+        if let Ok(mut entries) = tokio::fs::read_dir(user_skills_dir).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                if let Ok(content) = tokio::fs::read_to_string(entry.path()).await {
+                    loaded_skills.push_str(&content);
+                    loaded_skills.push_str("\n\n");
+                }
+            }
+        }
+    }
+    if loaded_skills.is_empty() {
+        loaded_skills = "No skills learned".to_string();
+    }
+    let active_prompt = REACT_PROMPT.replace("{loaded_skills}", &loaded_skills);
     let mut history = format!("System: {}\n\nUser: {}", REACT_PROMPT, input);
     loop {
         let output = model.chat(history.clone()).await?;

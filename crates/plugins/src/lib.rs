@@ -98,6 +98,24 @@ impl archon::plugin::host_capabilities::Host for PluginState {
             None => Ok(None)
         }
     }
+    async fn vector_search(&mut self, query_vector: Vec<f32>, limit: u32) -> Result<Vec<String>, String> {
+        if (self.permissions.access_level & 2) == 0 {
+            return Err("Access level disabled".to_string());
+        }
+        let vector_bytes: Vec<u8> = query_vector.iter()
+            .flat_map(|f| f.to_le_bytes())
+            .collect();
+        let mut rows = self.db_pool.query(
+            "SELECT value FROM plugins ORDER BY vector_distance_cos(vector, vector32(?1)) LIMIT ?2",
+            (vector_bytes, limit)
+        ).await.map_err(|e| e.to_string())?;
+        let mut results = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let val: String = row.get(0).map_err(|e| e.to_string())?;
+            results.push(val);
+        }
+        Ok(results)
+    }
     async fn schedule_task(&mut self, cron_expr: String, task_id: String) -> Result<bool, String> {
         let send_plugin = self.event_sender.send(TalosBus::PluginData {
             plugin_id: self.plugin_id.clone(),
@@ -143,6 +161,7 @@ pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::Talo
         plugin_id TEXT,
         key TEXT,
         value TEXT,
+        vector F32_BLOB(384),
         PRIMARY KEY (plugin_id, key)
         )",
         (),

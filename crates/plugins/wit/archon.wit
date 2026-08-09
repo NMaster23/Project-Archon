@@ -6,6 +6,7 @@ interface host-capabilities {
     db-set: func(key: string, value: string) -> result<bool, string>;
     db-get: func(key: string) -> result<option<string>, string>;
     schedule-task: func(cron-expr: string, task-id: string) -> result<bool, string>;
+    vector-search: func(query-vector: list<f32>, limit: u32) -> result<list<string>, string>;
 }
 
 interface channel-provider {
