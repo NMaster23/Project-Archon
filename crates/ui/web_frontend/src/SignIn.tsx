@@ -1,10 +1,55 @@
 import React, { useState } from 'react';
 import { useAuthStore } from './authStore';
-import LoginPage, { Logo, Username, Password, Submit, Title } from '@react-login-page/page1';
-import LoginLogo from 'react-login-page/logo-rect';
+import { InputOTP } from '@heroui/react';
+import {Check} from "@gravity-ui/icons";
+import {Button, Description, FieldError, Form, Input, Label, TextField} from "@heroui/react";
 
 interface SignInProps {
   setActiveIndex: (index: number | null) => void;
+}
+
+function SignInForm({ onSubmit }: { onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <Form className="flex w-96 flex-col gap-4" onSubmit={onSubmit}>
+      <TextField
+        isRequired
+        name="email"
+        type="email"
+        validate={(value) => {
+          if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value)) {
+            return "Please enter a valid email address";
+          }
+
+          return null;
+        }}
+      >
+        <Label>Email</Label>
+        <Input placeholder="john@example.com" />
+        <FieldError />
+      </TextField>
+
+      <InputOTP maxLength={6}>
+          <InputOTP.Group>
+            <InputOTP.Slot index={0} />
+            <InputOTP.Slot index={1} />
+            <InputOTP.Slot index={2} />
+            <InputOTP.Slot index={3} />
+            <InputOTP.Slot index={4} />
+            <InputOTP.Slot index={5} />
+          </InputOTP.Group>
+        </InputOTP>
+
+      <div className="flex gap-2">
+        <Button type="submit">
+          <Check />
+          Submit
+        </Button>
+        <Button type="reset" variant="secondary">
+          Reset
+        </Button>
+      </div>
+    </Form>
+  );
 }
 
 const SignIn: React.FC<SignInProps> = ({ setActiveIndex }) => {
@@ -42,24 +87,7 @@ const SignIn: React.FC<SignInProps> = ({ setActiveIndex }) => {
   };
 
   return (
-    <form onSubmit={handleLogin} style={{ height: '100%' }}>
-      <LoginPage style={{ height: 580 }}>
-        <Logo>
-          <LoginLogo />
-        </Logo>
-        <Title>Talos Login</Title>
-        <Username
-          name="email"
-          placeholder="Email address"
-          onChange={(e) => setEmail(e.target.value)} />
-        <Password
-          name="totpCode"
-          placeholder="6-digit 2FA Code"
-          onChange={(e) => setTotpCode(e.target.value)} />
-        <a href="#" onClick={(e) => { e.preventDefault(); setActiveIndex(14); }} style={{textDecoration: 'underline'}}>Sign-in with Password</a>
-        <Submit>Log In</Submit>
-      </LoginPage>
-    </form>
+    <SignInForm onSubmit={handleLogin} />
   );
 };
 

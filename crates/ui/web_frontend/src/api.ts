@@ -18,8 +18,10 @@ export const apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Pr
         const state = useAuthStore.getState();
         if (state.activeEmail) {
             state.removeAccount(state.activeEmail);
+            if (window.location.pathname !== '/login') {
+                window.location.reload();
+            }
         }
-        window.location.reload();
     }
     return response;
 }
