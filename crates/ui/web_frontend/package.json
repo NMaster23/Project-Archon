@@ -21,6 +21,7 @@
     "ldrs": "^1.1.9",
     "liquid-glass-react": "^1.1.1",
     "lucide-react": "^1.24.0",
+    "motion": "^13.1.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "shadcn": "^4.13.0",

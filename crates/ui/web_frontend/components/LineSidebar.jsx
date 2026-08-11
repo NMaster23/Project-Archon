@@ -1,31 +1,7 @@
-import { useRef, useState, useCallback, useEffect, type CSSProperties } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import './LineSidebar.css';
 
-type Falloff = 'linear' | 'smooth' | 'sharp';
-
-export interface LineSidebarProps {
-  items?: string[];
-  accentColor?: string;
-  textColor?: string;
-  markerColor?: string;
-  showIndex?: boolean;
-  showMarker?: boolean;
-  proximityRadius?: number;
-  maxShift?: number;
-  falloff?: Falloff;
-  markerLength?: number;
-  markerGap?: number;
-  tickScale?: number;
-  scaleTick?: boolean;
-  itemGap?: number;
-  fontSize?: number;
-  smoothing?: number;
-  defaultActive?: number | null;
-  onItemClick?: (index: number, label: string) => void;
-  className?: string;
-}
-
-const FALLOFF_CURVES: Record<Falloff, (p: number) => number> = {
+const FALLOFF_CURVES = {
   linear: p => p,
   smooth: p => p * p * (3 - 2 * p),
   sharp: p => p * p * p
@@ -66,16 +42,16 @@ const LineSidebar = ({
   defaultActive = null,
   onItemClick,
   className = ''
-}: LineSidebarProps) => {
-  const listRef = useRef<HTMLUListElement>(null);
-  const itemRefs = useRef<(HTMLLIElement | null)[]>([]);
-  const targetsRef = useRef<number[]>([]);
-  const currentRef = useRef<number[]>([]);
-  const rafRef = useRef<number | null>(null);
+}) => {
+  const listRef = useRef(null);
+  const itemRefs = useRef([]);
+  const targetsRef = useRef([]);
+  const currentRef = useRef([]);
+  const rafRef = useRef(null);
   const lastRef = useRef(0);
-  const activeRef = useRef<number | null>(defaultActive);
+  const activeRef = useRef(defaultActive);
   const smoothingRef = useRef(smoothing);
-  const [activeIndex, setActiveIndex] = useState<number | null>(defaultActive);
+  const [activeIndex, setActiveIndex] = useState(defaultActive);
 
   activeRef.current = activeIndex;
   smoothingRef.current = smoothing;
@@ -83,7 +59,7 @@ const LineSidebar = ({
   // Single rAF loop that eases every item's --effect toward its target using
   // frame-rate independent exponential smoothing, so color, shift and scale
   // all move together without staggering CSS transitions.
-  const runFrame = useCallback((now: number) => {
+  const runFrame = useCallback(now => {
     const dt = Math.min((now - lastRef.current) / 1000, 0.05);
     lastRef.current = now;
     const tau = Math.max(smoothingRef.current, 1) / 1000;
@@ -108,13 +84,16 @@ const LineSidebar = ({
   }, []);
 
   const startLoop = useCallback(() => {
-    if (rafRef.current != null) return;
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+    }
+
     lastRef.current = performance.now();
     rafRef.current = requestAnimationFrame(runFrame);
   }, [runFrame]);
 
   const handlePointerMove = useCallback(
-    (e: React.PointerEvent<HTMLUListElement>) => {
+    e => {
       const list = listRef.current;
       if (!list) return;
       const rect = list.getBoundingClientRect();
@@ -139,7 +118,7 @@ const LineSidebar = ({
   }, [startLoop]);
 
   const handleClick = useCallback(
-    (index: number, label: string) => {
+    (index, label) => {
       setActiveIndex(index);
       onItemClick?.(index, label);
     },
@@ -152,10 +131,8 @@ const LineSidebar = ({
 
   useEffect(
     () => () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     },
     []
   );
@@ -163,20 +140,18 @@ const LineSidebar = ({
   return (
     <nav
       className={`line-sidebar${showMarker ? ' line-sidebar--markers' : ''}${scaleTick ? ' line-sidebar--scale-tick' : ''}${className ? ` ${className}` : ''}`}
-      style={
-        {
-          '--accent-color': accentColor,
-          '--text-color': textColor,
-          '--marker-color': markerColor,
-          '--marker-length': `${markerLength}px`,
-          '--marker-gap': `${markerGap}px`,
-          '--tick-scale': tickScale,
-          '--max-shift': `${maxShift}px`,
-          '--item-gap': `${itemGap}px`,
-          '--font-size': `${fontSize}rem`,
-          '--smoothing': `${smoothing}ms`
-        } as CSSProperties
-      }
+      style={{
+        '--accent-color': accentColor,
+        '--text-color': textColor,
+        '--marker-color': markerColor,
+        '--marker-length': `${markerLength}px`,
+        '--marker-gap': `${markerGap}px`,
+        '--tick-scale': tickScale,
+        '--max-shift': `${maxShift}px`,
+        '--item-gap': `${itemGap}px`,
+        '--font-size': `${fontSize}rem`,
+        '--smoothing': `${smoothing}ms`
+      }}
     >
       <ul ref={listRef} className="line-sidebar__list" onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave}>
         {items.map((label, index) => (

@@ -63,30 +63,6 @@ void main() {
 }
 `;
 
-interface MagicRingsProps {
-  color?: string;
-  colorTwo?: string;
-  speed?: number;
-  ringCount?: number;
-  attenuation?: number;
-  lineThickness?: number;
-  baseRadius?: number;
-  radiusStep?: number;
-  scaleRate?: number;
-  opacity?: number;
-  blur?: number;
-  noiseAmount?: number;
-  rotation?: number;
-  ringGap?: number;
-  fadeIn?: number;
-  fadeOut?: number;
-  followMouse?: boolean;
-  mouseInfluence?: number;
-  hoverScale?: number;
-  parallax?: number;
-  clickBurst?: boolean;
-}
-
 export default function MagicRings({
   color = '#fc42ff',
   colorTwo = '#42fcff',
@@ -109,9 +85,9 @@ export default function MagicRings({
   hoverScale = 1.2,
   parallax = 0.05,
   clickBurst = false,
-}: MagicRingsProps) {
-  const mountRef = useRef<HTMLDivElement | null>(null);
-  const propsRef = useRef<Required<MagicRingsProps> | null>(null);
+}) {
+  const mountRef = useRef(null);
+  const propsRef = useRef(null);
   const mouseRef = useRef([0, 0]);
   const smoothMouseRef = useRef([0, 0]);
   const hoverAmountRef = useRef(0);
@@ -120,7 +96,7 @@ export default function MagicRings({
 
   propsRef.current = {
     color, colorTwo, speed, ringCount, attenuation, lineThickness,
-    baseRadius, radiusStep, scaleRate, opacity, blur, noiseAmount,
+    baseRadius, radiusStep, scaleRate, opacity, noiseAmount,
     rotation, ringGap, fadeIn, fadeOut, followMouse, mouseInfluence,
     hoverScale, parallax, clickBurst,
   };
@@ -129,7 +105,7 @@ export default function MagicRings({
     const mount = mountRef.current;
     if (!mount) return;
 
-    let renderer: THREE.WebGLRenderer;
+    let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ alpha: true });
     } catch {
@@ -191,7 +167,7 @@ export default function MagicRings({
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
 
-    const onMouseMove = (e: MouseEvent) => {
+    const onMouseMove = (e) => {
       const rect = mount.getBoundingClientRect();
       mouseRef.current[0] = (e.clientX - rect.left) / rect.width - 0.5;
       mouseRef.current[1] = -((e.clientY - rect.top) / rect.height - 0.5);
@@ -209,10 +185,18 @@ export default function MagicRings({
     mount.addEventListener('mouseleave', onMouseLeave);
     mount.addEventListener('click', onClick);
 
-    let frameId: number;
-    const animate = (t: number) => {
+    let frameId = 0;
+    let isVisible = false;
+    let isPageVisible = !document.hidden;
+    let elapsed = 0;
+    let lastT = 0;
+    const animate = (t) => {
       frameId = requestAnimationFrame(animate);
-      const p = propsRef.current!;
+      const p = propsRef.current;
+
+      const dt = lastT === 0 ? 0 : Math.min(t - lastT, 100);
+      lastT = t;
+      elapsed += dt * 0.001 * p.speed;
 
       smoothMouseRef.current[0] += (mouseRef.current[0] - smoothMouseRef.current[0]) * 0.08;
       smoothMouseRef.current[1] += (mouseRef.current[1] - smoothMouseRef.current[1]) * 0.08;
@@ -220,7 +204,7 @@ export default function MagicRings({
       burstRef.current *= 0.95;
       if (burstRef.current < 0.001) burstRef.current = 0;
 
-      uniforms.uTime.value = t * 0.001 * p.speed;
+      uniforms.uTime.value = elapsed;
       uniforms.uAttenuation.value = p.attenuation;
       uniforms.uColor.value.set(p.color);
       uniforms.uColorTwo.value.set(p.colorTwo);
@@ -244,10 +228,42 @@ export default function MagicRings({
 
       renderer.render(scene, camera);
     };
-    frameId = requestAnimationFrame(animate);
+    frameId = 0;
+
+    const tryStart = () => {
+      if (isVisible && isPageVisible && frameId === 0) {
+        lastT = 0;
+        frameId = requestAnimationFrame(animate);
+      }
+    };
+    const tryStop = () => {
+      if (frameId !== 0) {
+        cancelAnimationFrame(frameId);
+        frameId = 0;
+      }
+    };
+
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        isVisible = entry.isIntersecting;
+        isVisible ? tryStart() : tryStop();
+      },
+      { threshold: 0 }
+    );
+    io.observe(mount);
+
+    const onVisibility = () => {
+      isPageVisible = !document.hidden;
+      isPageVisible ? tryStart() : tryStop();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    tryStart();
 
     return () => {
-      cancelAnimationFrame(frameId);
+      tryStop();
+      io.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', resize);
       ro.disconnect();
       mount.removeEventListener('mousemove', onMouseMove);
