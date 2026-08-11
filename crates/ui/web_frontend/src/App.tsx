@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { apiFetch } from './api';
 
 interface ServerStatus {
   uptime: number;
@@ -39,8 +40,10 @@ export default function App() {
   const MAX_RETRIES = 100;
   useEffect(() => {
     const fetchConfig = async () => {
+      const token = useAuthStore.getState().getActiveToken();
+      if (!token) { return; }
       try {
-        const response = await fetch('/api/config', { method: 'GET' });
+        const response = await apiFetch('/api/config', { method: 'GET' });
         if (!response.ok) {
           console.log("Error Code:", response.status);
           const errorMessage = await response.text();
@@ -86,8 +89,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const token = useAuthStore.getState().getActiveToken();
+    if (!token) { return; }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/api/talosbus?token=${token}`;
     const socket = new WebSocket(wsUrl);
 

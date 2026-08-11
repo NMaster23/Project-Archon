@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuthStore } from './authStore';
 import { InputOTP } from '@heroui/react';
 import {Check} from "@gravity-ui/icons";
-import {Button, Description, FieldError, Form, Input, Label, TextField} from "@heroui/react";
+import {Button, FieldError, Form, Input, Label, TextField} from "@heroui/react";
 import {Separator} from "@heroui/react";
 
 interface SignInProps {
@@ -30,6 +30,8 @@ function SignInForm({
         isRequired
         name="email"
         type="email"
+        value={email}
+        onChange={setEmail}
         validate={(value) => {
           if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value)) {
             return "Please enter a valid email address";
@@ -41,8 +43,7 @@ function SignInForm({
         <Label>Email</Label>
         <Input
           placeholder="john@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          className="placeholder:text-white/40"
         />
         <FieldError />
       </TextField>
@@ -72,9 +73,6 @@ function SignInForm({
           <Check />
           Submit
         </Button>
-        <Button type="reset" variant="secondary">
-          Reset
-        </Button>
       </div>
     </Form>
   );
@@ -96,7 +94,7 @@ const SignIn: React.FC<SignInProps> = ({ setActiveIndex }) => {
       if (response.ok) {
         const data = await response.json();
         useAuthStore.getState().addAccount({ 
-          username: email.split('@')[0],
+          username: data.username,
           email: email, 
           secret: '',
           sessionToken: data.token || data.sessionToken

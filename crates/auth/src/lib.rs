@@ -25,6 +25,7 @@ pub struct UserData {
 #[derive(Serialize, Deserialize)]
 pub struct LoginResponse {
     pub token: String,
+    pub username: String,
 }
 
 #[derive(Clone)]
@@ -248,8 +249,11 @@ pub async fn totp_verify_handler(
             if let Ok(mut pending) = state.pending_totp.write() {
                 pending.remove(&payload.email);
             }
-            let generated_token = issue_session_token(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-            Ok(Json(LoginResponse { token: generated_token }))
+            let token = issue_session_token(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+            Ok(Json(LoginResponse {
+                token,
+                username: user_data.username.clone(),
+            }))
         } else {
             Err(StatusCode::UNAUTHORIZED)
         }
@@ -261,11 +265,16 @@ pub async fn totp_verify_handler(
 pub async fn totp_login_handler(
     AxumState(_state): AxumState<AuthState>,
     Json(payload): Json<VerifyRequest>,
-) -> Result<Json<bool>, StatusCode> {
+) -> Result<Json<LoginResponse>, StatusCode> {
     let secret = get_auth(Some(&payload.email), 1).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
     let valid = totp_verify(&secret.data, &payload.code, &payload.email).await;
     if valid {
-        Ok(Json(true))
+        let token = issue_session_token(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        let username = secret.username.unwrap_or_else(|| payload.email.split('@').next().unwrap().to_string());
+        Ok(Json(LoginResponse {
+            token,
+            username
+        }))
     } else {
         Err(StatusCode::UNAUTHORIZED)
     }
@@ -274,11 +283,16 @@ pub async fn totp_login_handler(
 pub async fn password_login_handler(
     AxumState(_state): AxumState<AuthState>,
     Json(payload): Json<VerifyRequest2>,
-) -> Result<Json<bool>, StatusCode> {
+) -> Result<Json<LoginResponse>, StatusCode> {
     let secret = get_auth(Some(&payload.email), 1).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
     match &secret.password {
         Some(saved_password) if argon2::verify_encoded(&saved_password, payload.password.as_bytes()).unwrap_or(false) => {
-            Ok(Json(true))
+            let token = issue_session_token(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+            let username = secret.username.unwrap_or_else(|| payload.email.split('@').next().unwrap().to_string());
+            Ok(Json(LoginResponse {
+                token,
+                username,
+            }))
         },
         _ => Err(StatusCode::UNAUTHORIZED)
     }
