@@ -3,14 +3,29 @@ import { useAuthStore } from './authStore';
 import { InputOTP } from '@heroui/react';
 import {Check} from "@gravity-ui/icons";
 import {Button, Description, FieldError, Form, Input, Label, TextField} from "@heroui/react";
+import {Separator} from "@heroui/react";
 
 interface SignInProps {
   setActiveIndex: (index: number | null) => void;
 }
 
-function SignInForm({ onSubmit }: { onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
+function SignInForm({
+  onSubmit,
+  email,
+  setEmail,
+  totpCode,
+  setTotpCode,
+  setActiveIndex
+}: {
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void,
+  email: string,
+  setEmail: (email: string) => void,
+  totpCode: string,
+  setTotpCode: (code: string) => void,
+  setActiveIndex: (index: number | null) => void,
+}) {
   return (
-    <Form className="flex w-96 flex-col gap-4" onSubmit={onSubmit}>
+    <Form className="flex w-96 flex-col gap-4 bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md border border-white/10" onSubmit={onSubmit}>
       <TextField
         isRequired
         name="email"
@@ -24,11 +39,19 @@ function SignInForm({ onSubmit }: { onSubmit: (e: React.FormEvent<HTMLFormElemen
         }}
       >
         <Label>Email</Label>
-        <Input placeholder="john@example.com" />
+        <Input
+          placeholder="john@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
         <FieldError />
       </TextField>
 
-      <InputOTP maxLength={6}>
+      <InputOTP
+        maxLength={6}
+        value={totpCode}
+        onChange={setTotpCode}
+      >
           <InputOTP.Group>
             <InputOTP.Slot index={0} />
             <InputOTP.Slot index={1} />
@@ -38,7 +61,12 @@ function SignInForm({ onSubmit }: { onSubmit: (e: React.FormEvent<HTMLFormElemen
             <InputOTP.Slot index={5} />
           </InputOTP.Group>
         </InputOTP>
-
+        <Separator className="my-4" />
+        <Button
+          onPress={() => setActiveIndex(14)}
+        >
+          Sign in With Password
+        </Button>
       <div className="flex gap-2">
         <Button type="submit">
           <Check />
@@ -87,7 +115,16 @@ const SignIn: React.FC<SignInProps> = ({ setActiveIndex }) => {
   };
 
   return (
-    <SignInForm onSubmit={handleLogin} />
+    <div className="flex flex-col items-center justify-center h-full w-full">
+      <SignInForm
+        onSubmit={handleLogin}
+        email={email}
+        setEmail={setEmail}
+        totpCode={totpCode}
+        setTotpCode={setTotpCode}
+        setActiveIndex={setActiveIndex}
+      />
+    </div>
   );
 };
 

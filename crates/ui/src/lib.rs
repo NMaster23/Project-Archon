@@ -400,7 +400,6 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
     let config = state.config.clone();
     let cloudflare_token = config.read().expect("Cloudflare config error").cloudflare_token.clone();
     let private_router = Router::new()
-        .route("/api/status", get(get_server_status))
         .route("/api/talosbus", get(get_talosbus_ws))
         .route("/api/config", get(get_server_config).post(update_server_config))
         .route("/api/user/prefs", get(get_user_preferences).post(update_user_prefs))
@@ -409,6 +408,7 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
         .route_layer(axum::middleware::from_fn(talos_auth::axum_auth))
         .with_state(state.clone());
     let public_router = Router::new()
+        .route("/api/status", get(get_server_status))
         .route("/api/2fa/signup", post(talos_auth::totp_setup_handler))
         .route("/api/2fa/verify", post(talos_auth::totp_verify_handler))
         .route("/api/2fa/login", post(talos_auth::totp_login_handler))
