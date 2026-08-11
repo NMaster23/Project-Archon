@@ -111,9 +111,9 @@ const handle = {
     borderRadius: "50%",
 }
 
-const box = {
+const rectangle = {
     width: 100,
-    height: 100,
+    height: 50,
     backgroundColor: "var(--hue-3)",
     borderRadius: 5,
 }
@@ -141,13 +141,17 @@ function ToggleSwitch({ isOn, setIsOn }: { isOn: boolean; setIsOn: (value: boole
     )
 }
 
-function Gestures() {
+function InteractiveButton({ onClick, disabled, children }: { onClick: () => void; disabled: boolean; children: React.ReactNode }) {
     return (
-        <motion.div
+        <motion.button
             whileHover={{ scale: 1.2 }}
             whileTap={{ scale: 0.8 }}
-            style={box}
-        />
+            style={rectangle}
+            onClick={onClick}
+            disabled={disabled}
+        >
+            {children}
+        </motion.button>
     )
 }
 
@@ -206,6 +210,9 @@ export default function SettingsPage() {
     return(
         <div>
             <ToggleSwitch isOn={config?.run_in_background || false} setIsOn={(value) => changeHandler('run_in_background', value)} />
+            <InteractiveButton onClick={saveSettings} disabled={saving}>
+                {saving ? "Saving..." : "Save Settings"}
+            </InteractiveButton>
         </div>
     );
 }
