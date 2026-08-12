@@ -2,7 +2,7 @@ use app_dirs2::{AppDataType, AppInfo, get_app_root};
 use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
 use talos_ai::{gemini_api, manage_soul, self_improvement};
-use talos_auth::{auth, get_auth, verify_session_token};
+use talos_auth::{auth, get_auth, issue_session_token, verify_session_token};
 use talos_core::{ClientToServer, ConfigFile, ServerToClient, TalosBus, UserPreferences};
 use notify_rust::{Notification, Timeout};
 use std::sync::{Arc, RwLock};
@@ -158,9 +158,22 @@ pub async fn start_server() -> anyhow::Result<()> {
 }
 
 pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
-    let client_config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config.json");
+    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
+    let client_config_path = app_root.join("config.json");
     let client_config = Arc::new(RwLock::new(talos_core::ClientConfig::load(&client_config_path, talos_core::CONFIG_TEMPLATE)));
     let (icon_enabled_path, _) = talos_ui::get_icon_paths();
+    let token_path = app_root.join("session.token");
+    let token = match std::fs::read_to_string(&token_path) {
+        Ok(token) => token.trim().to_string(),
+        Err(_) => {
+            let new_token = issue_session_token("user@local.client").await.expect("Failed to issue token");
+            if let Some(parent) = token_path.parent() {
+                std::fs::create_dir_all(parent).expect("Failed to create config dir");
+            }
+            std::fs::write(&token_path, &new_token).expect("Failed to write token");
+            new_token
+        }
+    };
     Notification::new()
         .summary("Microphone Unmuted")
         .body("Voice Control and STT Available. (Alt+M to Disable)")

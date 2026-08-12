@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from './api';
+import { BackgroundRippleEffect } from "./components/ui/background-ripple-effect";
 
 interface ServerStatus {
   uptime: number;
   status: number;
 }
-import MagicRings from '../components/MagicRings';
-import LineSidebar from '../components/LineSidebar';
+
 import LiquidGlass from 'liquid-glass-react'
 
 import Page1 from './Page1';
@@ -238,61 +238,27 @@ export default function App() {
       ref={containerRef} 
       className="w-screen h-screen relative overflow-hidden bg-black"
     >
-      <div className="absolute top-4 right-4 z-[100] text-white/50 font-sans">
+      <div className="absolute top-4 right-4 z-100 text-white/50 font-sans">
         {serverStatus ? `Backend online: Status ${serverStatus.status} (Uptime ${serverStatus.uptime}s)` : "Connecting to backend..."}
       </div>
-      <div className="absolute inset-0 z-0">
-        <MagicRings
-          color="#A855F7"
-          colorTwo="#6366F1"
-          ringCount={6}
-          speed={1}
-          attenuation={10}
-          lineThickness={2}
-          baseRadius={0.35}
-          radiusStep={0.1}
-          scaleRate={0.1}
-          opacity={1}
-          blur={0}
-          noiseAmount={0.1}
-          rotation={0}
-          ringGap={1.5}
-          fadeIn={0.7}
-          fadeOut={0.5}
-          followMouse={false}
-          mouseInfluence={0.2}
-          hoverScale={1.2}
-          parallax={0.05}
-          clickBurst={false}
-        />
-      </div>
       <div className="absolute inset-0 z-10 pointer-events-none">
-        <div className={`pointer-events-auto w-full h-full ${isSidebarVisible ? 'pl-[20rem]' : ''}`}>
+        <div className={`pointer-events-auto w-full h-full ${isSidebarVisible ? 'pl-80' : ''}`}>
           {renderContent()}
         </div>
       </div>
-      {isSidebarVisible && (
-        <div className="absolute top-1/2 left-16 -translate-y-1/2 z-20">
-          <LineSidebar 
-            items={[
-              'Dashboard',
-              'Server Status',
-              'Talos AI Core',
-              'TalosBus Network',
-              'Access Control',
-              'Security Logs',
-              'Voice Interface',
-              'Telemetry',
-              'System Events',
-              'Database',
-              'Integrations',
-              'Settings'
-            ]}
-            defaultActive={activeIndex} 
-            onItemClick={(index: number) => setActiveIndex(index)} 
-          />
-        </div>
-      )}
+      <div className="relative flex min-h-screen w-full flex-col items-start justify-start overflow-hidden">
+      <BackgroundRippleEffect />
+      <div className="mt-60 w-full">
+        <h2 className="relative z-10 mx-auto max-w-4xl text-center text-2xl font-bold text-neutral-800 md:text-4xl lg:text-7xl dark:text-neutral-100">
+          Interactive Background Boxes Ripple Effect
+        </h2>
+        <p className="relative z-10 mx-auto mt-4 max-w-xl text-center text-neutral-800 dark:text-neutral-500">
+          Hover over the boxes above and click.To be used on backgrounds of hero
+          sections OR Call to Action sections. I beg you don&apos;t use it
+          everywhere.
+        </p>
+      </div>
+    </div>
     </div>
   );
 }

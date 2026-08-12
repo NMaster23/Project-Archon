@@ -110,14 +110,16 @@ const SignIn2: React.FC<SignInProps> = ({ setActiveIndex }) => {
   };
 
   return (
-    SignIn({
-      onSubmit: handleLogin,
-      email,
-      setEmail,
-      password,
-      setPassword,
-      setActiveIndex
-    })
+    <div className="flex flex-col items-center justify-center h-full w-full">
+      <SignIn
+        onSubmit={handleLogin}
+        email={email}
+        setEmail={setEmail}
+        password={password}
+        setPassword={setPassword}
+        setActiveIndex={setActiveIndex}
+      />
+    </div>
   );
 };
 

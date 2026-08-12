@@ -1,14 +1,193 @@
-import React, { useState } from 'react';
-import LoginPage, { Logo, Password, Input } from '@react-login-page/page1';
-import LoginLogo from 'react-login-page/logo-rect';
+import React, { useEffect, useState } from 'react';
+import {Separator} from "@heroui/react";
+import {Check} from "@gravity-ui/icons";
+import { InputOTP } from '@heroui/react';
+import {Button, FieldError, Form, Input, Label, TextField} from "@heroui/react";
+import {ProgressBar} from "@heroui/react";
+import zxcvbn from 'zxcvbn';
 
 interface SignUpProps {
   setActiveIndex: (index: number | null) => void;
 }
 
+const passwordProgressHandler = (password: string) => {
+  if (!password) return "default";
+  const result = zxcvbn(password);
+  const strength = result.score / 4 * 100;
+  if (strength <= 25) return 'danger';
+  if (strength <= 50) return 'danger';
+  if (strength <= 75) return 'warning';
+  return 'success';
+}
+
+function SignUpForm({
+  onSubmit,
+  username,
+  setUsername,
+  email,
+  setEmail,
+  password,
+  setPassword
+}: {
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void,
+  username: string,
+  setUsername: (username: string) => void,
+  email: string,
+  setEmail: (email: string) => void,
+  password: string,
+  setPassword: (password: string) => void,
+  setActiveIndex: (index: number | null) => void,
+}) {
+  const [validEmailInput, setValidEmailInput] = useState(false);
+  const [validPasswordInput, setValidPasswordInput] = useState(false);
+  const [isFormValid, setIsFormValid] = useState(false);
+  const color = passwordProgressHandler(password);
+  useEffect(() => {
+    if (validEmailInput && validPasswordInput) {
+      setIsFormValid(true);
+    } else {
+      setIsFormValid(false);
+    }
+  }, [validEmailInput, validPasswordInput]);
+  return (
+    <Form className="flex w-96 flex-col gap-4 bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md border border-white/10" onSubmit={onSubmit}>
+      <TextField
+        isRequired
+        name="username"
+        type="text"
+        value={username}
+        onChange={setUsername}
+      >
+        <Label>User Name</Label>
+        <Input
+          placeholder="John Doe"
+          className="placeholder:text-white/40"
+        />
+        <FieldError />
+      </TextField>
+      <TextField
+        isRequired
+        name="email"
+        type="email"
+        value={email}
+        onChange={setEmail}
+        validate={(value) => {
+          if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value)) {
+            return "Please enter a valid email address";
+          }
+          setValidEmailInput(true);
+          return null;
+        }}
+      >
+        <Label>Email</Label>
+        <Input
+          placeholder="john@example.com"
+          className="placeholder:text-white/40"
+        />
+        <FieldError />
+      </TextField>
+      <TextField
+        isRequired
+        name="password"
+        type="password"
+        value={password}
+        onChange={setPassword}
+        validate={(value) => {
+          if (value.length < 8) {
+            return "Password must be at least 8 characters long";
+          }
+          setValidPasswordInput(true);
+          return null;
+        }}
+      >
+        <Label>Password</Label>
+        <Input
+          placeholder="••••••••"
+          className="placeholder:text-white/40"
+        />
+        <FieldError />
+      </TextField>
+      <div className="flex w-64 flex-col gap-6">
+        <ProgressBar aria-label="Password Strength" color={color} value={zxcvbn(password).score / 4 * 100}>
+          <Label>Password Strength</Label>
+          <ProgressBar.Output />
+          <ProgressBar.Track>
+            <ProgressBar.Fill />
+          </ProgressBar.Track>
+        </ProgressBar>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          type="submit"
+          isDisabled={!isFormValid}
+          className={`transition-colors ${
+            isFormValid ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 cursor-not-allowed'
+          }`}
+        >
+          <Check />
+          Submit
+        </Button>
+      </div>
+    </Form>
+  )
+}
+
+function Setup2FAForm({
+  qrCode,
+  totpCode,
+  setTotpCode,
+  handleVerify
+}: {
+  qrCode: string,
+  totpCode: string,
+  setTotpCode: (code: string) => void,
+  handleVerify: (e: React.FormEvent<HTMLFormElement>) => void,
+}) {
+  return (
+    <div className="flex w-96 flex-col gap-4 bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md border border-white/10">
+      <div style={{ padding: '20px', textAlign: 'center', color: '#333' }}>
+        <h2 style={{ marginBottom: '10px' }}>Setup Two-Factor Authentication</h2>
+        <p style={{ marginBottom: '20px' }}>Scan the QR code below with your Authenticator app (like Google Authenticator or Authy).</p>
+  
+          {qrCode && (
+          <img 
+            src={`data:image/png;base64,${qrCode}`} 
+            alt="Scan me" 
+            style={{ margin: '0 auto 20px', display: 'block', maxWidth: '200px' }} 
+          />
+        )}
+  
+        <form onSubmit={handleVerify}>
+          <InputOTP
+            maxLength={6}
+            value={totpCode}
+            onChange={setTotpCode}
+          >
+          <InputOTP.Group>
+            <InputOTP.Slot index={0} />
+              <InputOTP.Slot index={1} />
+                <InputOTP.Slot index={2} />
+                <InputOTP.Slot index={3} />
+                <InputOTP.Slot index={4} />
+                <InputOTP.Slot index={5} />
+              </InputOTP.Group>
+            </InputOTP> 
+          <Separator className="my-4" />
+          <Button variant="primary" type="submit">
+            <Check />
+            Verify Code
+          </Button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
   const [step, setStep] = useState<'signup' | 'setup_2fa'>('signup');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [qrCode, setQrCode] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -19,12 +198,13 @@ const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
     const enteredUserName = formData.get('username') as string;
 
     if (!enteredUserName) return;
+    setUsername(enteredUserName);
 
     if (!enteredEmail) return;
     setEmail(enteredEmail);
 
     if (!enteredPassword) return;
-
+    setPassword(enteredPassword);
     try {
       const response = await fetch('/api/2fa/signup', {
         method: 'POST',
@@ -68,68 +248,29 @@ const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
   };
   if (step === 'setup_2fa') {
     return (
-      <LoginPage style={{ height: 620 }}>
-        <Logo>
-          <LoginLogo />
-        </Logo>
-        <div style={{ padding: '20px', textAlign: 'center', color: '#333' }}>
-          <h2 style={{ marginBottom: '10px' }}>Setup Two-Factor Auth</h2>
-          <p style={{ marginBottom: '20px' }}>Scan the QR code below with your Authenticator app (like Google Authenticator or Authy).</p>
-          
-          {qrCode && (
-            <img 
-              src={`data:image/png;base64,${qrCode}`} 
-              alt="Scan me" 
-              style={{ margin: '0 auto 20px', display: 'block', maxWidth: '200px' }} 
-            />
-          )}
-
-          <form onSubmit={handleVerify}>
-            <input
-              type="text"
-              placeholder="Enter 6-digit code"
-              value={totpCode}
-              onChange={(e) => setTotpCode(e.target.value)}
-              maxLength={6}
-              style={{ 
-                padding: '10px', 
-                marginBottom: '15px', 
-                width: '100%', 
-                boxSizing: 'border-box',
-                borderRadius: '4px',
-                border: '1px solid #ccc'
-              }}
-            />
-            <button 
-              type="submit" 
-              style={{ 
-                padding: '10px 20px', 
-                width: '100%',
-                backgroundColor: '#007bff', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '4px',
-                cursor: 'pointer' 
-              }}
-            >
-              Verify Code
-            </button>
-          </form>
-        </div>
-      </LoginPage>
+      <div className="flex items-center justify-center w-full h-full min-h-[80vh]">
+        <Setup2FAForm
+          qrCode={qrCode}
+          totpCode={totpCode}
+          setTotpCode={setTotpCode}
+          handleVerify={handleVerify}
+        />
+      </div>
     );
   }
   return (
-    <form onSubmit={handleSignup} style={{ height: '100%' }}>
-      <LoginPage style={{ height: 620 }}>
-        <Logo>
-          <LoginLogo />
-        </Logo>
-        <Input name="username" index={1} placeholder="Username" />
-        <Input name="email" index={2} placeholder="Email Address" />
-        <Password name="password" index={3} />
-      </LoginPage>
-    </form>
+    <div className="flex items-center justify-center w-full h-full min-h-[80vh]">
+      <SignUpForm
+        onSubmit={handleSignup}
+        email={email}
+        setEmail={setEmail}
+        username={username}
+        setUsername={setUsername}
+        password={password}
+        setPassword={setPassword}
+        setActiveIndex={setActiveIndex}
+      />
+    </div>
   );
 };
 

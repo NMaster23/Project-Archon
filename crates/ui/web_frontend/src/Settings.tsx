@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from "motion/react";
+import { apiFetch } from './api';
 
 /*
 PAGE SettingsPage
@@ -93,23 +94,7 @@ interface Config {
     custom_settings: Record<string, any>;
 }
 
-const container = {
-    width: 100,
-    height: 50,
-    backgroundColor: "white",
-    borderRadius: 50,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    padding: 10,
-}
 
-const handle = {
-    width: 50,
-    height: 50,
-    backgroundColor: "gray",
-    borderRadius: "50%",
-}
 
 const rectangle = {
     width: 100,
@@ -167,7 +152,7 @@ export default function SettingsPage() {
 
     const saveSettings = () => {
         setSaving(true);
-        fetch("/api/config", {
+        apiFetch("/api/config", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -191,7 +176,7 @@ export default function SettingsPage() {
     }
 
     useEffect(() => {
-        fetch("/api/config")
+        apiFetch("/api/config")
             .then((response) => response.json())
             .then((data) => {
                 setConfig(data);
