@@ -13,6 +13,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/server/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/transport/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/auth/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/installer/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

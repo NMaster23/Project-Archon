@@ -8,6 +8,7 @@ import {
   ColorSwatch,
   Label,
 } from "@heroui/react";
+import { Button, CloseButton } from "@heroui/react";
 
 /*
 PAGE SettingsPage
@@ -108,6 +109,8 @@ const rectangle = {
   borderRadius: 5,
 };
 
+const MotionButton = motion.create(Button);
+
 function ToggleSwitch({
   isOn,
   setIsOn,
@@ -147,15 +150,16 @@ function InteractiveButton({
   children: React.ReactNode;
 }) {
   return (
-    <motion.button
+    <MotionButton
       whileHover={{ scale: 1.2 }}
       whileTap={{ scale: 0.8 }}
       style={rectangle}
       onClick={onClick}
-      disabled={disabled}
+      isDisabled={disabled}
+      variant="primary"
     >
       {children}
-    </motion.button>
+    </MotionButton>
   );
 }
 
@@ -168,6 +172,12 @@ function ThemeColorPicker() {
     setColor(hexColor);
     document.documentElement.style.setProperty("--accent", hexColor);
     localStorage.setItem("user-theme-color", hexColor);
+    const h = Math.round(colorObject.getChannelValue("hue"))
+    const s = Math.round(colorObject.getChannelValue("saturation"))
+    const l = Math.round(colorObject.getChannelValue("lightness"))
+    const hsl = `${h} ${s}% ${l}%`;
+    document.documentElement.style.setProperty("--heroui-primary", hsl);
+    localStorage.setItem("user-theme-hsl", hsl);
   };
   return (
     <ColorPicker value={color} onChange={colorChangeHandler}>
@@ -251,7 +261,7 @@ export default function SettingsPage() {
     return <div>Error loading settings.</div>;
   }
   return (
-    <div>
+    <div className="pointer-events-auto flex flex-col items-center justify-center h-full w-fullflex flex-col items-center justify-center h-full w-full">
       <ToggleSwitch
         isOn={config?.run_in_background || false}
         setIsOn={(value) => changeHandler("run_in_background", value)}

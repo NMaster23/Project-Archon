@@ -7,8 +7,10 @@ import { useAuthStore } from "./authStore";
 import { Button, CloseButton } from "@heroui/react";
 import { Spotlight } from "./components/ui/spotlight";
 import { motion } from "motion/react";
-import {Bars} from '@gravity-ui/icons';
+import {Bars, HouseFill} from '@gravity-ui/icons';
 import {Avatar, Description, Label, ListBox} from "@heroui/react";
+import {House} from '@gravity-ui/icons';
+import {Gear} from '@gravity-ui/icons';
 
 import Page1 from "./Page1";
 import Page2 from "./Page2";
@@ -34,50 +36,55 @@ interface ServerStatus {
 
 const MotionButton = motion.create(Button);
 
-function SideBar() {
+function SideBar({ activeIndex, setActiveIndex }: { activeIndex: number | null, setActiveIndex:React.Dispatch<React.SetStateAction<number | null>> }) {
   return  (
-    <ListBox aria-label="Users" className="w-full" selectionMode="single">
-      <ListBox.Item id="1" textValue="Dashboard">
-        <Avatar size="sm">
-          <Avatar.Image
-            alt="Bob"
-            src="https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue.jpg"
-          />
-          <Avatar.Fallback>B</Avatar.Fallback>
-        </Avatar>
-        <div className="flex flex-col">
-          <Label>Bob</Label>
-          <Description>bob@heroui.com</Description>
-        </div>
-        <ListBox.ItemIndicator />
+    <ListBox aria-label="Sidebar" className="w-full" selectionMode="single">
+      <ListBox.Item
+        id="1"
+        textValue="Dashboard"
+        onClick={() =>
+          setActiveIndex(0)
+        }>
+          {activeIndex === 0 ? (
+            <HouseFill />
+          ) : (
+            <House />
+          )}
+          Dashboard
       </ListBox.Item>
-      <ListBox.Item id="2" textValue="Fred">
-        <Avatar size="sm">
-          <Avatar.Image
-            alt="Fred"
-            src="https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/green.jpg"
-          />
-          <Avatar.Fallback>F</Avatar.Fallback>
-        </Avatar>
-        <div className="flex flex-col">
-          <Label>Fred</Label>
-          <Description>fred@heroui.com</Description>
-        </div>
-        <ListBox.ItemIndicator />
+      <ListBox.Item id="2" textValue="x" onClick={() => setActiveIndex(1)}>
+        pg 1
       </ListBox.Item>
-      <ListBox.Item id="3" textValue="Martha">
-        <Avatar size="sm">
-          <Avatar.Image
-            alt="Martha"
-            src="https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/purple.jpg"
-          />
-          <Avatar.Fallback>M</Avatar.Fallback>
-        </Avatar>
-        <div className="flex flex-col">
-          <Label>Martha</Label>
-          <Description>martha@heroui.com</Description>
-        </div>
-        <ListBox.ItemIndicator />
+      <ListBox.Item id="3" textValue="x" onClick={() => setActiveIndex(2)}>
+        pg 2
+      </ListBox.Item>
+      <ListBox.Item id="4" textValue="x" onClick={() => setActiveIndex(3)}>
+        pg 3
+      </ListBox.Item>
+      <ListBox.Item id="5" textValue="x" onClick={() => setActiveIndex(4)}>
+        pg 4
+      </ListBox.Item>
+      <ListBox.Item id="6" textValue="x" onClick={() => setActiveIndex(5)}>
+        pg 5
+      </ListBox.Item>
+      <ListBox.Item id="7" textValue="x" onClick={() => setActiveIndex(6)}>
+        pg 6
+      </ListBox.Item>
+      <ListBox.Item id="8" textValue="x" onClick={() => setActiveIndex(7)}>
+        pg 7
+      </ListBox.Item>
+      <ListBox.Item id="9" textValue="x" onClick={() => setActiveIndex(8)}>
+        pg 8
+      </ListBox.Item>
+      <ListBox.Item id="10" textValue="x" onClick={() => setActiveIndex(9)}>
+        pg 9
+      </ListBox.Item>
+      <ListBox.Item id="11" textValue="x" onClick={() => setActiveIndex(10)}>
+        pg 10
+      </ListBox.Item>
+      <ListBox.Item id="12" textValue="Settings" onClick={() => setActiveIndex(11)}>
+        <Gear color="white"/>
+        Settings
       </ListBox.Item>
     </ListBox>
   )
@@ -96,6 +103,12 @@ export default function App() {
   const [toolHistory, setToolHistory] = useState<string[]>([]);
   const failCountRef = useRef(0);
   const MAX_RETRIES = 100;
+  useEffect(() => {
+    const hsl = localStorage.getItem("user-theme-hsl");
+    if (hsl) {
+      document.documentElement.style.setProperty("--heroui-primary", hsl);
+    }
+  }, []);
   useEffect(() => {
     const fetchConfig = async () => {
       const token = useAuthStore.getState().getActiveToken();
@@ -363,7 +376,7 @@ export default function App() {
       )}
       {isSidebarVisible && (
         <div className="absolute left-0 top-0 bottom-0 w-1/5 z-40 bg-zinc-900 border-r border-zinc-800 p-4 pt-20 shadow-2xl">
-          <SideBar />
+          <SideBar activeIndex={activeIndex} setActiveIndex={setActiveIndex}/>
         </div>
       )}
       <div className="absolute top-4 right-4 z-100 text-white/50 font-sans">

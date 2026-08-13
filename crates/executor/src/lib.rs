@@ -251,31 +251,7 @@ pub async fn tools() -> Result<(), BoxError> {
     let view_screen = ToolBuilder::new("view_screen")
         .description("Take a capture of the screen to view")
         .handler(|_: ()| async move {
-            let config = CaptureConfig {
-                webp_config: WebPConfig::high_quality(),
-                include_cursor: true,
-                use_hardware_acceleration: true,
-                ..Default::default()
-            };
-            let mut screenshot = match WebPScreenshot::with_config(config) {
-                Ok(s) => s,
-                Err(e) => return Ok(CallToolResult::error(e.to_string())),
-            };
-            let results = screenshot.capture_all_displays();
-            if let Some(Ok(capture)) = results.into_iter().find(|r| r.is_ok()) {
-                let img = match image::load_from_memory(&capture.data) {
-                    Ok(i) => i.to_rgba8(),
-                    Err(e) => return Ok(CallToolResult::error(e.to_string())),
-                };
-                let edited = match image_edit(img).await {
-                    Ok(e) => e,
-                    Err(e) => return Ok(CallToolResult::error(e)),
-                };
-                let base64_img = general_purpose::STANDARD.encode(&edited.0);
-                Ok(CallToolResult::image(base64_img, "image/jpeg"))
-            } else {
-                Ok(CallToolResult::error("Failed to capture any displays.".to_string()))
-            }
+            view_screen()
         })
         .build();
     let router = McpRouter::new()
@@ -293,6 +269,34 @@ pub async fn tools() -> Result<(), BoxError> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+pub async fn view_screen() -> Result<CallToolResult, _> {
+    let config = CaptureConfig {
+        webp_config: WebPConfig::high_quality(),
+        include_cursor: true,
+        use_hardware_acceleration: true,
+        ..Default::default()
+    };
+    let mut screenshot = match WebPScreenshot::with_config(config) {
+        Ok(s) => s,
+        Err(e) => return Ok(CallToolResult::error(e.to_string())),
+    };
+    let results = screenshot.capture_all_displays();
+    if let Some(Ok(capture)) = results.into_iter().find(|r| r.is_ok()) {
+        let img = match image::load_from_memory(&capture.data) {
+            Ok(i) => i.to_rgba8(),
+            Err(e) => return Ok(CallToolResult::error(e.to_string())),
+        };
+        let edited = match image_edit(img).await {
+            Ok(e) => e,
+            Err(e) => return Ok(CallToolResult::error(e)),
+        };
+        let base64_img = general_purpose::STANDARD.encode(&edited.0);
+        Ok(CallToolResult::image(base64_img, "image/jpeg"))
+    } else {
+        Ok(CallToolResult::error("Failed to capture any displays.".to_string()))
+    }
 }
 
 pub async fn image_edit(mut image: RgbaImage) -> Result<(Vec<u8>, Vec<(i32, i32, String)>), String> {
