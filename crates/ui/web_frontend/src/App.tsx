@@ -4,9 +4,11 @@ import { BackgroundRippleEffect } from "./components/ui/background-ripple-effect
 import MeteorShower from "./components/meteor-shower-animation/meteor-shower";
 import { cn } from "./lib/utils";
 import { useAuthStore } from "./authStore";
-import { Button } from "@heroui/react";
+import { Button, CloseButton } from "@heroui/react";
 import { Spotlight } from "./components/ui/spotlight";
 import { motion } from "motion/react";
+import {Bars} from '@gravity-ui/icons';
+import {Avatar, Description, Label, ListBox} from "@heroui/react";
 
 import Page1 from "./Page1";
 import Page2 from "./Page2";
@@ -32,9 +34,59 @@ interface ServerStatus {
 
 const MotionButton = motion.create(Button);
 
+function SideBar() {
+  return  (
+    <ListBox aria-label="Users" className="w-full" selectionMode="single">
+      <ListBox.Item id="1" textValue="Dashboard">
+        <Avatar size="sm">
+          <Avatar.Image
+            alt="Bob"
+            src="https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue.jpg"
+          />
+          <Avatar.Fallback>B</Avatar.Fallback>
+        </Avatar>
+        <div className="flex flex-col">
+          <Label>Bob</Label>
+          <Description>bob@heroui.com</Description>
+        </div>
+        <ListBox.ItemIndicator />
+      </ListBox.Item>
+      <ListBox.Item id="2" textValue="Fred">
+        <Avatar size="sm">
+          <Avatar.Image
+            alt="Fred"
+            src="https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/green.jpg"
+          />
+          <Avatar.Fallback>F</Avatar.Fallback>
+        </Avatar>
+        <div className="flex flex-col">
+          <Label>Fred</Label>
+          <Description>fred@heroui.com</Description>
+        </div>
+        <ListBox.ItemIndicator />
+      </ListBox.Item>
+      <ListBox.Item id="3" textValue="Martha">
+        <Avatar size="sm">
+          <Avatar.Image
+            alt="Martha"
+            src="https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/purple.jpg"
+          />
+          <Avatar.Fallback>M</Avatar.Fallback>
+        </Avatar>
+        <div className="flex flex-col">
+          <Label>Martha</Label>
+          <Description>martha@heroui.com</Description>
+        </div>
+        <ListBox.ItemIndicator />
+      </ListBox.Item>
+    </ListBox>
+  )
+}
+
 export default function App() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const isSidebarVisible =
+  const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  const isLoggedIn =
     activeIndex !== null && activeIndex >= 0 && activeIndex <= 11;
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -250,6 +302,7 @@ export default function App() {
                 }}
               >
               <MotionButton
+                size="lg"
                 whileHover={{ scale: 1.2 }}
                 whileTap={{ scale: 0.9 }}
                 onHoverStart={() => console.log('hover started!')}
@@ -277,6 +330,7 @@ export default function App() {
               }}
             >
               <MotionButton
+                size="md"
                 variant="outline"
                 className="px-8 font-medium text-zinc-300 border-zinc-600 hover:bg-zinc-800"
                 onClick={() =>
@@ -297,21 +351,31 @@ export default function App() {
       ref={containerRef}
       className="w-screen h-screen relative overflow-hidden bg-black"
     >
+      {isLoggedIn && (
+        <div className="absolute top-4 left-4 z-50">
+          <CloseButton
+            className="w-12 h-12"
+            onClick={ (() => setIsSidebarVisible(!isSidebarVisible))}
+            >
+            <Bars color="white" />
+          </CloseButton>
+        </div>
+      )}
+      {isSidebarVisible && (
+        <div className="absolute left-0 top-0 bottom-0 w-1/5 z-40 bg-zinc-900 border-r border-zinc-800 p-4 pt-20 shadow-2xl">
+          <SideBar />
+        </div>
+      )}
       <div className="absolute top-4 right-4 z-100 text-white/50 font-sans">
         {serverStatus
           ? `🟢 Status ${serverStatus.status} (Uptime ${serverStatus.uptime}s)`
           : "🔴 Connecting to backend..."}
       </div>
       <div className="absolute inset-0 z-0">
-        {!isSidebarVisible ? (
+        {!isLoggedIn ? (
           <BackgroundRippleEffect />
         ) : (
           <MeteorShower className="flex aspect-4/2 items-center justify-center">
-            <div className="z-10 space-y-4 text-center lg:space-y-6">
-              <h4 className="text-2xl font-semibold text-black/80 lg:text-3xl dark:text-white/80">
-                Bundui Components
-              </h4>
-            </div>
           </MeteorShower>
         )}
       </div>
