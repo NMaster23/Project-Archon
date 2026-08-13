@@ -50,7 +50,7 @@ function SignUpForm({
     }
   }, [validEmailInput, validPasswordInput]);
   return (
-    <Form className="flex w-96 flex-col gap-4 bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md border border-white/10" onSubmit={onSubmit}>
+    <Form className="pointer-events-auto flex w-96 flex-col gap-4 bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md border border-white/10" onSubmit={onSubmit}>
       <TextField
         isRequired
         name="username"
@@ -144,7 +144,7 @@ function Setup2FAForm({
   handleVerify: (e: React.FormEvent<HTMLFormElement>) => void,
 }) {
   return (
-    <div className="flex w-96 flex-col gap-4 bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md border border-white/10">
+    <div className="pointer-events-auto flex w-96 flex-col gap-4 bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md border border-white/10">
       <div style={{ padding: '20px', textAlign: 'center', color: '#333' }}>
         <h2 style={{ marginBottom: '10px' }}>Setup Two-Factor Authentication</h2>
         <p style={{ marginBottom: '20px' }}>Scan the QR code below with your Authenticator app (like Google Authenticator or Authy).</p>

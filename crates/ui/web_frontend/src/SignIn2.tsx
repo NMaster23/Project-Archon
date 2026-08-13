@@ -24,7 +24,7 @@ function SignIn({
   setActiveIndex: (index: number | null) => void,
 }) {
   return (
-    <Form className="flex w-96 flex-col gap-4 bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md border border-white/10" onSubmit={onSubmit}>
+    <Form className="pointer-events-auto flex w-96 flex-col gap-4 bg-black/40 p-8 rounded-2xl shadow-xl backdrop-blur-md border border-white/10" onSubmit={onSubmit}>
       <TextField
         isRequired
         name="email"

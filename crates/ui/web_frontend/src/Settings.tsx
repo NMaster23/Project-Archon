@@ -1,6 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { apiFetch } from './api';
+import { apiFetch } from "./api";
+import {
+  ColorArea,
+  ColorPicker,
+  ColorSlider,
+  ColorSwatch,
+  Label,
+} from "@heroui/react";
 
 /*
 PAGE SettingsPage
@@ -73,131 +80,188 @@ UI LAYOUT:
 */
 
 interface Config {
-    ai_permissions: string[];
-    backend: string;
-    dashboard_port: number;
-    run_in_background: boolean;
-    start_on_boot: boolean;
-    debug_logging: boolean;
-    gemini_api_key: string;
-    model: string;
-    system_prompt_override: string;
-    max_output_tokens: number;
-    stt_disabled_by_default: boolean;
-    input_device: string;
-    output_device: string;
-    silence_threshold_rms: number;
-    push_to_talk_key: string | null;
-    auto_start_plugins: boolean;
-    plugin_directory: string;
-    allowed_mcp_servers: string[];
-    custom_settings: Record<string, any>;
+  ai_permissions: string[];
+  backend: string;
+  dashboard_port: number;
+  run_in_background: boolean;
+  start_on_boot: boolean;
+  debug_logging: boolean;
+  gemini_api_key: string;
+  model: string;
+  system_prompt_override: string;
+  max_output_tokens: number;
+  stt_disabled_by_default: boolean;
+  input_device: string;
+  output_device: string;
+  silence_threshold_rms: number;
+  push_to_talk_key: string | null;
+  auto_start_plugins: boolean;
+  plugin_directory: string;
+  allowed_mcp_servers: string[];
+  custom_settings: Record<string, any>;
 }
-
-
 
 const rectangle = {
-    width: 100,
-    height: 50,
-    backgroundColor: "var(--hue-3)",
-    borderRadius: 5,
+  width: 100,
+  height: 50,
+  backgroundColor: "var(--hue-3)",
+  borderRadius: 5,
+};
+
+function ToggleSwitch({
+  isOn,
+  setIsOn,
+}: {
+  isOn: boolean;
+  setIsOn: (value: boolean) => void;
+}) {
+  const toggleSwitch = () => setIsOn(!isOn);
+
+  return (
+    <button
+      className={`flex w-24 p-1 cursor-pointer rounded-full bg-indigo-500/30 transition-colors ${
+        isOn ? "justify-start" : "justify-end"
+      }`}
+      onClick={toggleSwitch}
+    >
+      <motion.div
+        className="w-10 h-10 rounded-full bg-indigo-500 shadow-sm"
+        layout
+        transition={{
+          type: "spring",
+          visualDuration: 0.2,
+          bounce: 0.2,
+        }}
+      />
+    </button>
+  );
 }
 
-function ToggleSwitch({ isOn, setIsOn }: { isOn: boolean; setIsOn: (value: boolean) => void }) {
-    const toggleSwitch = () => setIsOn(!isOn)
-
-    return (
-        <button
-            className={`flex w-24 p-1 cursor-pointer rounded-full bg-indigo-500/30 transition-colors ${
-                isOn ? "justify-start" : "justify-end"
-            }`}
-            onClick={toggleSwitch}
-        >
-            <motion.div
-                className="w-10 h-10 rounded-full bg-indigo-500 shadow-sm"
-                layout
-                transition={{
-                    type: "spring",
-                    visualDuration: 0.2,
-                    bounce: 0.2,
-                }}
-            />
-        </button>
-    )
+function InteractiveButton({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.button
+      whileHover={{ scale: 1.2 }}
+      whileTap={{ scale: 0.8 }}
+      style={rectangle}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </motion.button>
+  );
 }
 
-function InteractiveButton({ onClick, disabled, children }: { onClick: () => void; disabled: boolean; children: React.ReactNode }) {
-    return (
-        <motion.button
-            whileHover={{ scale: 1.2 }}
-            whileTap={{ scale: 0.8 }}
-            style={rectangle}
-            onClick={onClick}
-            disabled={disabled}
+function ThemeColorPicker() {
+  const [color, setColor] = useState(() => {
+    return localStorage.getItem("user-theme-color") || "#0485F7";
+  });
+  const colorChangeHandler = (colorObject: any) => {
+    const hexColor = colorObject.toString("hex");
+    setColor(hexColor);
+    document.documentElement.style.setProperty("--accent", hexColor);
+    localStorage.setItem("user-theme-color", hexColor);
+  };
+  return (
+    <ColorPicker value={color} onChange={colorChangeHandler}>
+      <ColorPicker.Trigger>
+        <ColorSwatch size="lg" />
+        <Label>Pick a theme color</Label>
+      </ColorPicker.Trigger>
+      <ColorPicker.Popover>
+        <ColorArea
+          aria-label="Color area"
+          className="max-w-full"
+          colorSpace="hsb"
+          xChannel="saturation"
+          yChannel="brightness"
         >
-            {children}
-        </motion.button>
-    )
+          <ColorArea.Thumb />
+        </ColorArea>
+        <ColorSlider channel="hue" className="gap-1 px-1" colorSpace="hsb">
+          <Label>Hue</Label>
+          <ColorSlider.Output className="text-muted" />
+          <ColorSlider.Track>
+            <ColorSlider.Thumb />
+          </ColorSlider.Track>
+        </ColorSlider>
+      </ColorPicker.Popover>
+    </ColorPicker>
+  );
 }
 
 export default function SettingsPage() {
-    const [config, setConfig] = useState<Config | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const changeHandler = (fieldName: string, newValue: any) => {
-        if (config) {
-            setConfig({ ...config, [fieldName]: newValue });
+  const [config, setConfig] = useState<Config | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const changeHandler = (fieldName: string, newValue: any) => {
+    if (config) {
+      setConfig({ ...config, [fieldName]: newValue });
+    }
+  };
+
+  const saveSettings = () => {
+    setSaving(true);
+    apiFetch("/api/config", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(config),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to save settings");
         }
-    };
+        return response.json();
+      })
+      .then((data) => {
+        setConfig(data);
+        setSaving(false);
+      })
+      .catch((err) => {
+        console.error("Failed to save settings:", err);
+        setSaving(false);
+      });
+  };
 
-    const saveSettings = () => {
-        setSaving(true);
-        apiFetch("/api/config", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(config),
-        })
-        .then((response) => {
-            if (!response.ok) {
-                throw new Error("Failed to save settings");
-            }
-            return response.json();
-        })
-        .then((data) => {
-            setConfig(data);
-            setSaving(false);
-        })
-        .catch((err) => {
-            console.error("Failed to save settings:", err);
-            setSaving(false);
-        });
-    }
-
-    useEffect(() => {
-        apiFetch("/api/config")
-            .then((response) => response.json())
-            .then((data) => {
-                setConfig(data);
-                setLoading(false);
-            }).catch((err) => {
-                console.error("Failed to load settings:", err);
-                setLoading(false);
-            });
-    }, []);
-    if (loading) {
-        return <div>Loading...</div>;
-    }
-    if (!config) {
-        return <div>Error loading settings.</div>;
-    }
-    return(
-        <div>
-            <ToggleSwitch isOn={config?.run_in_background || false} setIsOn={(value) => changeHandler('run_in_background', value)} />
-            <InteractiveButton onClick={saveSettings} disabled={saving}>
-                {saving ? "Saving..." : "Save Settings"}
-            </InteractiveButton>
-        </div>
-    );
+  useEffect(() => {
+    apiFetch("/api/config")
+      .then((response) => response.json())
+      .then((data) => {
+        setConfig(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to load settings:", err);
+        setLoading(false);
+      });
+  }, []);
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+  if (!config) {
+    return <div>Error loading settings.</div>;
+  }
+  return (
+    <div>
+      <ToggleSwitch
+        isOn={config?.run_in_background || false}
+        setIsOn={(value) => changeHandler("run_in_background", value)}
+      />
+      <div className="mt-8 mb-4">
+        <ThemeColorPicker />
+      </div>
+      <InteractiveButton onClick={saveSettings} disabled={saving}>
+        {saving ? "Saving..." : "Save Settings"}
+      </InteractiveButton>
+    </div>
+  );
 }

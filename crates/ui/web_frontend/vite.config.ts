@@ -8,6 +8,12 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
+    fs: {
+      allow: [
+        './',
+        '../../../assets/Fonts'
+      ]
+    },
     proxy: {
       '/api/talosbus': {
         target: 'ws://127.0.0.1:8080',

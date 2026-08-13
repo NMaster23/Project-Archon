@@ -1,16 +1,27 @@
 "use client";
-import React, { useMemo, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../../lib/utils";
 
 export const BackgroundRippleEffect = ({
-  rows = 8,
-  cols = 27,
-  cellSize = 56,
+  cellSize = 90,
 }: {
-  rows?: number;
-  cols?: number;
   cellSize?: number;
 }) => {
+  const [dimensions, setDimensions] = useState({ rows: 0, cols: 0 });
+  useEffect(() => {
+    const handleResize = () => {
+      setDimensions({
+        rows: Math.ceil(window.innerHeight / cellSize),
+        cols: Math.ceil(window.innerWidth / cellSize),
+      });
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [cellSize]);
+  const { rows, cols } = dimensions;
   const [clickedCell, setClickedCell] = useState<{
     row: number;
     col: number;

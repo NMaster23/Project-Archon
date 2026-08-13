@@ -231,10 +231,12 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
         }
         let (tts_tx, mut tts_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         tokio::spawn(async move {
-            let model = load_model(
-                TtsConfig::new(ModelType::Qwen3Tts)
-                    .with_model_path("./models/Qwen3-TTS")
-            ).unwrap();
+            let model = tokio::task::spawn_blocking(move || {
+                load_model(
+                    TtsConfig::new(ModelType::Qwen3Tts)
+                        .with_model_path("./models/Qwen3-TTS")
+                ).expect("Failed to load model")
+            }).await.expect("Failed to spawn blocking task");
             while let Some(text) = tts_rx.recv().await {
                 if let Err(e) = talos_audio::tts(&text.clone(), &model).await {
                     eprintln!("TTS Error: {}", e);

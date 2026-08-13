@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @source "../node_modules/liquid-glass-react";
+@import "tailwindcss";
 
 :root {
   --text: #6b6375;
@@ -107,4 +108,59 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+}
+
+.button:active,
+.button[data-pressed="true"] {
+  transform: scale(0.97);
+}
+
+@theme inline {
+  --animate-cell-ripple: cell-ripple var(--duration, 200ms) ease-out none 1
+  var(--delay, 0ms);
+
+  @keyframes cell-ripple {
+    0% {
+      opacity: 0.4;
+    }
+    10% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0.4;
+    }
+  }
+}
+
+@font-face {
+  font-family: 'FiraCode';
+  src: url('../../../../assets/Fonts/FiraCode-Regular.ttf') format('truetype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme inline {
+  --animate-spotlight: spotlight 2s ease 0.75s 1 forwards;
+}
+
+@keyframes spotlight {
+  0% {
+    opacity: 0;
+    transform: translate(-72%, -62%) scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -40%) scale(1);
+  }
+}
+
+@layer components {
+  .button {
+    @apply bg-purple-500 text-white hover:bg-purple-600;
+  }
+
+  .button--icon-only {
+    @apply rounded-lg bg-blue-500;
+  }
 }

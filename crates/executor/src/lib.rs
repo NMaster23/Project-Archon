@@ -299,7 +299,7 @@ pub async fn image_edit(mut image: RgbaImage) -> Result<(Vec<u8>, Vec<(i32, i32,
     let mut buffer = Cursor::new(Vec::new());
     let grid_color = image::Rgba([255, 0, 0, 255]);
     let spacing = 100;
-    let font = FontRef::try_from_slice(include_bytes!("../../../assets/Fonts/OpenSans-Regular.ttf")).unwrap();
+    let font = FontRef::try_from_slice(include_bytes!("../../../assets/Fonts/JetBrainsMono-Regular.ttf")).unwrap();
     for (i, x) in (0..image.width()).step_by(spacing).enumerate() {
         let col_label = format!("{}", (b'A' + (i % 26) as u8) as char);
         for (j, y) in (0..image.height()).step_by(spacing).enumerate() {
