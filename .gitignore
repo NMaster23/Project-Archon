@@ -3,3 +3,4 @@
 *.onnx
 models/Fun-CosyVoice3-0.5B-2512_ONNX/
 cloudflared.exe
+models/models.zip

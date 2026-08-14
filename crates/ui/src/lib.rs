@@ -431,5 +431,5 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
     });
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.expect("Failed to bind");
     println!("Listening on {}", listener.local_addr().expect("Could not get local address"));
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app).await.expect("Error starting server dashboard");
 }

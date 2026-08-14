@@ -270,7 +270,7 @@ pub async fn totp_login_handler(
     let valid = totp_verify(&secret.data, &payload.code, &payload.email).await;
     if valid {
         let token = issue_session_token(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-        let username = secret.username.unwrap_or_else(|| payload.email.split('@').next().unwrap().to_string());
+        let username = secret.username.unwrap_or_else(|| payload.email.split('@').next().expect("Error splitting email").to_string());
         Ok(Json(LoginResponse {
             token,
             username
@@ -288,7 +288,7 @@ pub async fn password_login_handler(
     match &secret.password {
         Some(saved_password) if argon2::verify_encoded(&saved_password, payload.password.as_bytes()).unwrap_or(false) => {
             let token = issue_session_token(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-            let username = secret.username.unwrap_or_else(|| payload.email.split('@').next().unwrap().to_string());
+            let username = secret.username.unwrap_or_else(|| payload.email.split('@').next().expect("Error splitting email").to_string());
             Ok(Json(LoginResponse {
                 token,
                 username,

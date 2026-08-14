@@ -194,7 +194,7 @@ pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::Talo
         let path = entry.path();
         if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("wasm") {
             let mut wasi_builder = WasiCtxBuilder::new();
-            wasi_builder.inherit_stdout().inherit_stderr().preopened_dir(&plugin_dir, "/workspace", DirPerms::all(), FilePerms::all()).unwrap();
+            wasi_builder.inherit_stdout().inherit_stderr().preopened_dir(&plugin_dir, "/workspace", DirPerms::all(), FilePerms::all())?;
             
             let wasi_ctx = wasi_builder.build();
             let table = ResourceTable::new();

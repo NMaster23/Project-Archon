@@ -198,7 +198,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     }).await.map_err(|_| anyhow::anyhow!("Timed out waiting for client to initialize"))?;
     let (stt_tx, mut stt_rx) = mpsc::unbounded_channel::<TalosBus>();
     let (ui_tx, ui_rx) = mpsc::unbounded_channel::<String>();
-    let user_stt = client_config.read().unwrap().stt_disabled_by_default;
+    let user_stt = client_config.read().expect("Error reading config").stt_disabled_by_default;
     let stt_disabled = Arc::new(AtomicBool::new(user_stt));
     let stt_disabled_ui = stt_disabled.clone();
     tokio::spawn(async move {
@@ -231,10 +231,11 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
         }
         let (tts_tx, mut tts_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         tokio::spawn(async move {
+            let model_path = dirs::data_local_dir().expect("Directory error").join("Talos/models/Qwen3-TTS");
             let model = tokio::task::spawn_blocking(move || {
                 load_model(
                     TtsConfig::new(ModelType::Qwen3Tts)
-                        .with_model_path("./models/Qwen3-TTS")
+                        .with_model_path(model_path)
                 ).expect("Failed to load model")
             }).await.expect("Failed to spawn blocking task");
             while let Some(text) = tts_rx.recv().await {

@@ -7,8 +7,6 @@ use xcap::image::RgbaImage;
 use mcpkit::prelude::*;
 use schemars::JsonSchema;
 use std::net::SocketAddr;
-use std::process::Stdio;
-use tokio::process::Command;
 use tower_mcp::{BoxError, CallToolResult, HttpTransport, McpRouter, ToolBuilder};
 use base64::engine::general_purpose;
 use base64::prelude::*;
@@ -18,7 +16,6 @@ use ocrs::{OcrEngine, OcrEngineParams};
 use ab_glyph::{FontRef, PxScale};
 use rten::Model;
 use ocrs::TextItem;
-use tokio::io::{AsyncBufReadExt, BufReader};
 
 const TOOLS: &[(&str, &str)] = &[
     ("cursor_move", "Move the cursor on screen"),
@@ -158,100 +155,40 @@ impl McpServer {
 }
 
 pub async fn tools() -> Result<(), BoxError> {
-    mcp_setup().await;
-
     let cursor_move = ToolBuilder::new("cursor_move")
         .description("Move the cursor to a specific coordinate on the screen.")
         .handler(|input: CursorMoveInput| async move {
-            let mut enigo = match McpServer::get_enigo() {
-                Ok(e) => e,
-                Err(e) => return Ok(CallToolResult::error(e)),
-            };
-            if let Err(e) = enigo.move_mouse(input.x, input.y, Coordinate::Abs) {
-                return Ok(CallToolResult::error(e.to_string()));
-            }
-            Ok(CallToolResult::text(format!("Moved cursor to X: {} Y: {} on screen", input.x, input.y)))
+            cursor_move(input).await
         })
         .build();
     let mouse_click = ToolBuilder::new("mouse_click")
         .description("Click left, right, or middle mouse button.")
         .handler(|input: MouseClickInput| async move {
-            let mut enigo = match McpServer::get_enigo() {
-                Ok(e) => e,
-                Err(e) => return Ok(CallToolResult::error(e)),
-            };
-            let mut clicked_button = String::new();
-            if input.button == 1 {
-                if let Err(e) = enigo.button(Button::Left, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
-                clicked_button = "Left Button".to_string();
-            } else if input.button == 2 {
-                if let Err(e) = enigo.button(Button::Right, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
-                clicked_button = "Right Button".to_string();
-            } else if input.button == 3 {
-                if let Err(e) = enigo.button(Button::Middle, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
-                clicked_button = "Middle Button".to_string();
-            }
-            Ok(CallToolResult::text(format!("Clicked button: {} successfully", clicked_button)))
+            mouse_click(input).await
         })
         .build();
     let mouse_scroll = ToolBuilder::new("mouse_scroll")
         .description("Scroll the mouse wheel a certain amount of line.")
         .handler(|input: MouseScrollInput| async move {
-            let mut enigo = match McpServer::get_enigo() {
-                Ok(e) => e,
-                Err(e) => return Ok(CallToolResult::error(e)),
-            };
-            if let Err(e) = enigo.scroll(input.lines, Axis::Vertical) {
-                return Ok(CallToolResult::error(e.to_string()));
-            }
-            Ok(CallToolResult::text(format!("Scrolled the mouse wheel {} successfully.", input.lines)))
+            mouse_scroll(input).await
         })
         .build();
     let key_press = ToolBuilder::new("key_press")
         .description("Press any key on the keyboard.")
         .handler(|input: KeyPressInput| async move {
-            let mut enigo = match McpServer::get_enigo() {
-                Ok(e) => e,
-                Err(e) => return Ok(CallToolResult::error(e)),
-            };
-            let mut parsed_keys = Vec::new();
-            for k in &input.keys {
-                if let Some(parsed) = McpServer::parse_key_string(k).await {
-                    parsed_keys.push(parsed);
-                }
-            }
-            if parsed_keys.is_empty() {
-                return Ok(CallToolResult::text("No Valid Keys Provided"));
-            }
-            for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)) {
-                if let Err(e) = enigo.key(*key, Direction::Press) { return Ok(CallToolResult::error(e.to_string())); }
-            }
-            if let Some(last_key) = parsed_keys.last() && let Err(e) = enigo.key(*last_key, Direction::Click) {
-                return Ok(CallToolResult::error(e.to_string()));
-            }
-            for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)).rev() {
-                if let Err(e) = enigo.key(*key, Direction::Release) { return Ok(CallToolResult::error(e.to_string())); }
-            }
-            Ok(CallToolResult::text(format!("Pressed keys: {:?} successfully.", input.keys)))
+            key_press(input).await
         })
         .build();
     let key_type = ToolBuilder::new("key_type")
         .description("Type a string of keys.")
         .handler(|input: KeyTypeInput| async move {
-            let mut enigo = match McpServer::get_enigo() {
-                Ok(e) => e,
-                Err(e) => return Ok(CallToolResult::error(e)),
-            };
-            if let Err(e) = enigo.text(&input.text) {
-                return Ok(CallToolResult::error(e.to_string()));
-            }
-            Ok(CallToolResult::text(format!("Typed text: {} successfully.", input.text)))
+            key_type(input).await
         })
         .build();
     let view_screen = ToolBuilder::new("view_screen")
         .description("Take a capture of the screen to view")
         .handler(|_: ()| async move {
-            view_screen()
+            view_screen().await
         })
         .build();
     let router = McpRouter::new()
@@ -271,7 +208,117 @@ pub async fn tools() -> Result<(), BoxError> {
     Ok(())
 }
 
-pub async fn view_screen() -> Result<CallToolResult, _> {
+pub async fn cursor_move(input: CursorMoveInput) -> Result<CallToolResult, tower_mcp::Error> {
+    let mut enigo = match McpServer::get_enigo() {
+        Ok(e) => e,
+        Err(e) => return Ok(CallToolResult::error(e)),
+    };
+    if let Err(e) = enigo.move_mouse(input.x, input.y, Coordinate::Abs) {
+        return Ok(CallToolResult::error(e.to_string()));
+    }
+    Ok(CallToolResult::text(format!("Moved cursor to X: {} Y: {} on screen", input.x, input.y)))
+}
+
+pub async fn mouse_click(input: MouseClickInput) -> Result<CallToolResult, tower_mcp::Error> {
+    let mut enigo = match McpServer::get_enigo() {
+        Ok(e) => e,
+        Err(e) => return Ok(CallToolResult::error(e)),
+    };
+    let mut clicked_button = String::new();
+    if input.button == 1 {
+        if let Err(e) = enigo.button(Button::Left, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
+        clicked_button = "Left Button".to_string();
+    } else if input.button == 2 {
+        if let Err(e) = enigo.button(Button::Right, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
+        clicked_button = "Right Button".to_string();
+    } else if input.button == 3 {
+        if let Err(e) = enigo.button(Button::Middle, Direction::Click) { return Ok(CallToolResult::error(e.to_string())); }
+        clicked_button = "Middle Button".to_string();
+    }
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    match view_screen().await {
+        Ok(screenshot) => {
+            Ok(screenshot)
+        },
+        Err(e) => {
+            Ok(CallToolResult::error(format!("Clicked button: {} successfully but screenshot failed: {}", clicked_button, e)))
+        }
+    }
+}
+
+pub async fn mouse_scroll(input: MouseScrollInput) -> Result<CallToolResult, tower_mcp::Error> {
+    let mut enigo = match McpServer::get_enigo() {
+        Ok(e) => e,
+        Err(e) => return Ok(CallToolResult::error(e)),
+    };
+    if let Err(e) = enigo.scroll(input.lines, Axis::Vertical) {
+        return Ok(CallToolResult::error(e.to_string()));
+    }
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    match view_screen().await {
+        Ok(screenshot) => {
+            Ok(screenshot)
+        },
+        Err(e) => {
+            Ok(CallToolResult::error(format!("Scrolled the mouse wheel {} successfully but screenshot failed: {}", input.lines, e)))
+        }
+    }
+}
+
+pub async fn key_press(input: KeyPressInput) -> Result<CallToolResult, tower_mcp::Error> {
+    let mut enigo = match McpServer::get_enigo() {
+        Ok(e) => e,
+        Err(e) => return Ok(CallToolResult::error(e)),
+    };
+    let mut parsed_keys = Vec::new();
+    for k in &input.keys {
+        if let Some(parsed) = McpServer::parse_key_string(k).await {
+            parsed_keys.push(parsed);
+        }
+    }
+    if parsed_keys.is_empty() {
+        return Ok(CallToolResult::text("No Valid Keys Provided"));
+    }
+    for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)) {
+        if let Err(e) = enigo.key(*key, Direction::Press) { return Ok(CallToolResult::error(e.to_string())); }
+    }
+    if let Some(last_key) = parsed_keys.last() && let Err(e) = enigo.key(*last_key, Direction::Click) {
+        return Ok(CallToolResult::error(e.to_string()));
+    }
+    for key in parsed_keys.iter().take(parsed_keys.len().saturating_sub(1)).rev() {
+        if let Err(e) = enigo.key(*key, Direction::Release) { return Ok(CallToolResult::error(e.to_string())); }
+    }
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    match view_screen().await {
+        Ok(screenshot) => {
+            Ok(screenshot)
+        },
+        Err(e) => {
+            Ok(CallToolResult::error(format!("Pressed keys: {:?} successfully but screenshot failed: {}", input.keys, e)))
+        }
+    }
+}
+
+pub async fn key_type(input: KeyTypeInput) -> Result<CallToolResult, tower_mcp::Error> {
+    let mut enigo = match McpServer::get_enigo() {
+        Ok(e) => e,
+        Err(e) => return Ok(CallToolResult::error(e)),
+    };
+    if let Err(e) = enigo.text(&input.text) {
+        return Ok(CallToolResult::error(e.to_string()));
+    }
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    match view_screen().await {
+        Ok(screenshot) => {
+            Ok(screenshot)
+        },
+        Err(e) => {
+            Ok(CallToolResult::error(format!("Typed text: {} successfully but screenshot failed: {}", input.text, e)))
+        }
+    }
+}
+
+pub async fn view_screen() -> Result<CallToolResult, tower_mcp::Error> {
     let config = CaptureConfig {
         webp_config: WebPConfig::high_quality(),
         include_cursor: true,
@@ -303,7 +350,7 @@ pub async fn image_edit(mut image: RgbaImage) -> Result<(Vec<u8>, Vec<(i32, i32,
     let mut buffer = Cursor::new(Vec::new());
     let grid_color = image::Rgba([255, 0, 0, 255]);
     let spacing = 100;
-    let font = FontRef::try_from_slice(include_bytes!("../../../assets/Fonts/JetBrainsMono-Regular.ttf")).unwrap();
+    let font = FontRef::try_from_slice(include_bytes!("../../../assets/Fonts/JetBrainsMono-Regular.ttf")).expect("Error converting font to bytes");
     for (i, x) in (0..image.width()).step_by(spacing).enumerate() {
         let col_label = format!("{}", (b'A' + (i % 26) as u8) as char);
         for (j, y) in (0..image.height()).step_by(spacing).enumerate() {
@@ -431,67 +478,15 @@ pub async fn get_tools() -> Vec<talos_core::ToolDeclaration> {
     }).collect()
 }
 
-pub async fn mcp_setup() {
-    let home = match std::env::home_dir() {
-        Some(h) => h,
-        None => return,
-    };
-    let config_path = home
-        .join(".gemini")
-        .join("config")
-        .join("mcp_config.json");
-    let mut config: Value = if config_path.exists() {
-        let content = fs::read_to_string(&config_path).unwrap_or_else(|_| "".to_string());
-        serde_json::from_str(&content).unwrap_or_else(|_| json!({}))
-    } else {
-        json!({})
-    };
-    if config.get("mcpServers").is_none() {
-        config["mcpServers"] = json!({})
-    }
-    let mut changed = false;
-
-    let new_server = json!({
-        "type": "http",
-        "serverUrl": "http://127.0.0.1:3000/"
-    });
-    
-    if config.get("mcpServers").and_then(|m| m.get("talos-executor")) != Some(&new_server) {
-        config["mcpServers"]["talos-executor"] = new_server;
-        changed = true;
-    }
-
-    let chrome_devtools = json!({
-        "command": "npx",
-        "args": [
-            "-y",
-            "chrome-devtools-mcp@latest",
-            "--browser-url=http://127.0.0.1:9222"
-        ]
-    });
-
-    if config.get("mcpServers").and_then(|m| m.get("chrome-devtools")) != Some(&chrome_devtools) {
-        config["mcpServers"]["chrome-devtools"] = chrome_devtools;
-        changed = true;
-    }
-
-    if changed {
-        if let Some(parent) = &config_path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if let Ok(updated_json) = serde_json::to_string_pretty(&config) {
-            let _ = fs::write(config_path, &updated_json);
-        }
-    }
-}
-
 pub async fn gemini_api_mcp() -> Vec<Value> {
     serde_json::from_str(API_TOOLS).unwrap_or_default()
 }
 
 pub async fn ocr_init() -> Result<OcrEngine, String> {
-    let detection_model = Model::load_file("models/ocrs/text-detection-ssfbcj81.rten").map_err(|e| e.to_string())?;
-    let recognition_model = Model::load_file("models/ocrs/text-rec-checkpoint-s52qdbqt.rten").map_err(|e| e.to_string())?;
+    let detection_path = dirs::data_local_dir().expect("Directory error").join("Talos/models/ocrs/text-detection-ssfbcj81.rten");
+    let recognition_path = dirs::data_local_dir().expect("Directory error").join("Talos/models/ocrs/text-rec-checkpoint-s52qdbqt.rten");
+    let detection_model = Model::load_file(detection_path).map_err(|e| e.to_string())?;
+    let recognition_model = Model::load_file(recognition_path).map_err(|e| e.to_string())?;
     OcrEngine::new(OcrEngineParams {
         detection_model: Some(detection_model),
         recognition_model: Some(recognition_model),

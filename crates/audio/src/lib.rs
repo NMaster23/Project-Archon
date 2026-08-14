@@ -9,7 +9,7 @@ use transcribe_rs::{SpeechModel, TranscribeOptions};
 use webrtc_vad::SampleRate::Rate16kHz;
 use webrtc_vad::VadMode::Quality;
 use webrtc_vad::*;
-use any_tts::{load_model, ModelType, SynthesisRequest, TtsConfig, TtsModel};
+use any_tts::{SynthesisRequest, TtsModel};
 use rubato::{Resampler, SincFixedIn, InterpolationType, InterpolationParameters, WindowFunction};
 
 pub fn stt(
@@ -17,8 +17,9 @@ pub fn stt(
     speaking: Arc<AtomicBool>,
     stt_disabled: Arc<AtomicBool>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let model_path = dirs::data_local_dir().expect("Directory error").join("Talos/models/moonshine-streaming-medium-onnx");
     let mut model = StreamingModel::load(
-        &PathBuf::from("models/moonshine-streaming-medium-onnx"),
+        &PathBuf::from(model_path),
         4,
         &Quantization::default(),
     )

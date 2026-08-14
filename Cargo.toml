@@ -10,7 +10,7 @@ members = [
     "crates/plugins",
     "crates/ui",
     "crates/transport"
-]
+, "crates/installer"]
 
 [workspace.dependencies]
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "full"] }

@@ -442,7 +442,8 @@ Operational Directives & Safety Rules
 
     Destructive Actions: If a user asks you to delete files, format drives, or run potentially dangerous commands, ask for confirmation before issuing the AGY instruction."#;
     let skills = load_skills().await;
-    let ai_management_prompt = format!("{}\n\nSkills:\n{}", raw_ai_management_prompt, skills);
+    let soul = load_soul().await;
+    let ai_management_prompt = format!("{}\n\nLearned Facts & Persona:\n{}\n\nSkills & Past Mistakes:\n{}", raw_ai_management_prompt, soul, skills);
     let executor_tools = executor::gemini_api_mcp().await;
     let gemini_tools = vec![gemini_live::Tool::FunctionDeclarations(
         executor_tools.into_iter().filter_map(|raw| {
@@ -776,6 +777,16 @@ pub async fn manage_memory() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+pub async fn load_soul() -> String {
+    if let Ok(app_root) = get_app_root(UserConfig, &APP_INFO) {
+        let soul_file = app_root.join("Agent").join("agent.md");
+        if let Ok(content) = tokio::fs::read_to_string(soul_file).await {
+            return content;
+        }
+    }
+    String::new()
+}
+
 pub async fn manage_soul() -> Result<(), Box<dyn std::error::Error>> {
     let app_root = get_app_root(UserConfig, &APP_INFO)?;
     let history_dir = app_root.join(".history");
@@ -868,7 +879,7 @@ pub async fn retrieve_memories(query: &str, limit: u32) -> Result<Vec<String>, B
 
 pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut UnboundedReceiver<TalosBus>, input: &str, model: &Model) -> Result<(), Box<dyn std::error::Error>> {
     let loaded_skills = load_skills().await;
-    let active_prompt = REACT_PROMPT.replace("{loaded_skills}", &loaded_skills);
+    let active_prompt = REACT_PROMPT.replace("{loaded_skills}", &loaded_skills).replace("{tools}", "cursor_move, mouse_click, mouse_scroll, key_press, key_type, view_screen");
     let mut enriched_input = input.trim().to_string();
     if let Ok(mem) = retrieve_memories(&enriched_input, 3).await {
         if !mem.is_empty() {
@@ -880,7 +891,7 @@ pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut Unbou
         let output = model.chat(history.clone()).await?;
         if output.starts_with("{") {
             let json: serde_json::Value = serde_json::from_str(&output)?;
-            let action = json["action"].as_str().unwrap();
+            let action = json["action"].as_str().expect("Json parsing error ReAct");
             let args = json["args"].to_string();
             let call_id = format!("call_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis() as u32);
             tx_in.send(TalosBus::ActionIntent {
