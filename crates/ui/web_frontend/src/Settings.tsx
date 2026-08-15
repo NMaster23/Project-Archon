@@ -8,7 +8,10 @@ import {
   ColorSwatch,
   Label,
 } from "@heroui/react";
-import { Button, CloseButton } from "@heroui/react";
+import { Button } from "@heroui/react";
+import { Switch } from '@heroui/react';
+import { CircleDollar } from "@gravity-ui/icons";
+import { Card, Link } from "@heroui/react";
 
 /*
 PAGE SettingsPage
@@ -110,35 +113,6 @@ const rectangle = {
 };
 
 const MotionButton = motion.create(Button);
-
-function ToggleSwitch({
-  isOn,
-  setIsOn,
-}: {
-  isOn: boolean;
-  setIsOn: (value: boolean) => void;
-}) {
-  const toggleSwitch = () => setIsOn(!isOn);
-
-  return (
-    <button
-      className={`flex w-24 p-1 cursor-pointer rounded-full bg-indigo-500/30 transition-colors ${
-        isOn ? "justify-start" : "justify-end"
-      }`}
-      onClick={toggleSwitch}
-    >
-      <motion.div
-        className="w-10 h-10 rounded-full bg-indigo-500 shadow-sm"
-        layout
-        transition={{
-          type: "spring",
-          visualDuration: 0.2,
-          bounce: 0.2,
-        }}
-      />
-    </button>
-  );
-}
 
 function InteractiveButton({
   onClick,
@@ -261,11 +235,68 @@ export default function SettingsPage() {
     return <div>Error loading settings.</div>;
   }
   return (
-    <div className="pointer-events-auto flex flex-col items-center justify-center h-full w-fullflex flex-col items-center justify-center h-full w-full">
-      <ToggleSwitch
-        isOn={config?.run_in_background || false}
-        setIsOn={(value) => changeHandler("run_in_background", value)}
-      />
+    <div className="pointer-events-auto flex flex-col items-center justify-center h-full w-fullflex w-full">
+    <Card className="w-[400px]">
+      <CircleDollar aria-label="Dollar sign icon" className="text-primary size-6" role="img" />
+      <Card.Header>
+        <Card.Title>Become an Acme Creator!</Card.Title>
+        <Card.Description>
+          Visit the Acme Creator Hub to sign up today and start earning credits from your fans and
+          followers.
+        </Card.Description>
+      </Card.Header>
+      <Card.Footer>
+        <Link
+          aria-label="Go to Acme Creator Hub (opens in new tab)"
+          href="https://heroui.com"
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          Creator Hub
+          <Link.Icon aria-hidden="true" />
+        </Link>
+      </Card.Footer>
+    </Card>
+      <Switch
+        isSelected={config?.run_in_background || false}
+        onChange={(value) => changeHandler("run_in_background", value)}
+      ><Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+          Background Startup
+        </Switch.Content>
+      </Switch>
+      <Switch
+        isSelected={config?.debug_logging || false}
+        onChange={(value) => changeHandler("debug_logging", value)}
+      ><Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+          Debug Logging
+        </Switch.Content>
+      </Switch>
+      <Switch
+        isSelected={config?.stt_disabled_by_default || false}
+        onChange={(value) => changeHandler("stt_disabled_by_default", value)}
+      ><Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+          STT Disabled on Startup
+        </Switch.Content>
+      </Switch>
+      <Switch
+        isSelected={config?.auto_start_plugins || false}
+        onChange={(value) => changeHandler("auto_start_plugins", value)}
+      ><Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+          Auto Start Plugins with System
+        </Switch.Content>
+      </Switch>
       <div className="mt-8 mb-4">
         <ThemeColorPicker />
       </div>

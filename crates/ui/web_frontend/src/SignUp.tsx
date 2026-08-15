@@ -5,6 +5,7 @@ import { InputOTP } from '@heroui/react';
 import {Button, FieldError, Form, Input, Label, TextField} from "@heroui/react";
 import {ProgressBar} from "@heroui/react";
 import zxcvbn from 'zxcvbn';
+import { Alert } from '@heroui/react';
 
 interface SignUpProps {
   setActiveIndex: (index: number | null) => void;
@@ -240,7 +241,12 @@ const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
       if (response.ok) {
         setActiveIndex(0);
       } else {
-        alert('Verification failed. Please try again.');
+        <Alert status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>Login failed please try again</Alert.Title>
+          </Alert.Content>
+        </Alert>
       }
     } catch (error) {
       console.error('Error during verification:', error);

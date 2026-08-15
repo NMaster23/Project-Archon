@@ -2,15 +2,15 @@ import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "./api";
 import { BackgroundRippleEffect } from "./components/ui/background-ripple-effect";
 import MeteorShower from "./components/meteor-shower-animation/meteor-shower";
-import { cn } from "./lib/utils";
 import { useAuthStore } from "./authStore";
 import { Button, CloseButton } from "@heroui/react";
 import { Spotlight } from "./components/ui/spotlight";
 import { motion } from "motion/react";
 import {Bars, HouseFill} from '@gravity-ui/icons';
-import {Avatar, Description, Label, ListBox} from "@heroui/react";
-import {House} from '@gravity-ui/icons';
-import {Gear} from '@gravity-ui/icons';
+import { ListBox } from "@heroui/react";
+import { House } from '@gravity-ui/icons';
+import { Gear } from '@gravity-ui/icons';
+import { Alert } from '@heroui/react';
 
 import Page1 from "./Page1";
 import Page2 from "./Page2";
@@ -97,14 +97,53 @@ export default function App() {
           console.log("Error Code:", response.status);
           const errorMessage = await response.text();
           console.error("Error Message:", errorMessage);
-          alert(`Server Error ${response.status}: ${errorMessage}`);
+          <Alert status="danger">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>Unable to connect to server</Alert.Title>
+              <Alert.Description>
+                Server Error ${response.status}: ${errorMessage}
+                We're experiencing connection issues. Please try the following:
+                <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
+                  <li>Check your internet connection</li>
+                  <li>Refresh the page</li>
+                  <li>Clear your browser cache</li>
+                </ul>
+              </Alert.Description>
+              <Button className="mt-2 sm:hidden" size="sm" variant="danger">
+                Retry
+              </Button>
+            </Alert.Content>
+            <Button className="hidden sm:block" size="sm" variant="danger">
+              Retry
+            </Button>
+          </Alert>
           return;
         }
         const config = await response.json();
         console.log("Fetched config:", config);
       } catch (error) {
         console.error("Error fetching config:", error);
-        alert("Error fetching config. Please check the console for details.");
+        <Alert status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>Error fetching config. Please check the console for details</Alert.Title>
+            <Alert.Description>
+              We're experiencing connection issues. Please try the following:
+              <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
+                <li>Check your internet connection</li>
+                <li>Refresh the page</li>
+                <li>Clear your browser cache</li>
+              </ul>
+            </Alert.Description>
+            <Button className="mt-2 sm:hidden" size="sm" variant="danger">
+              Retry
+            </Button>
+          </Alert.Content>
+          <Button className="hidden sm:block" size="sm" variant="danger">
+            Retry
+          </Button>
+        </Alert>
       }
     };
 
@@ -235,7 +274,7 @@ export default function App() {
       default:
         return (
           <>
-          <div className="relative flex h-[40rem] w-full overflow-hidden rounded-md antialiased md:items-center md:justify-center">
+          <div className="relative flex w-full overflow-hidden rounded-md antialiased md:items-center md:justify-center">
              <Spotlight
                 className="-top-40 left-10 md:-top-20 md:left-1/4 z-50 mix-blend-overlay"
                fill="white"

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useAuthStore } from './authStore';
-import { InputOTP } from '@heroui/react';
+import { CloseButton, InputOTP } from '@heroui/react';
 import {Check} from "@gravity-ui/icons";
 import {Button, FieldError, Form, Input, Label, TextField} from "@heroui/react";
 import {Separator} from "@heroui/react";
+import { Alert } from '@heroui/react';
 
 interface SignInProps {
   setActiveIndex: (index: number | null) => void;
@@ -101,11 +102,22 @@ const SignIn: React.FC<SignInProps> = ({ setActiveIndex }) => {
         });
 
         console.log("Login successful!");
-        alert("Success! You are logged in.");
+        <Alert status="success">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>Successfully Logged In</Alert.Title>
+          </Alert.Content>
+          <CloseButton />
+        </Alert>
         setActiveIndex(0); 
       } else {
         console.error("Login failed. Check your 2FA code.");
-        alert("Invalid code or email!");
+        <Alert status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>Login failed please try again</Alert.Title>
+          </Alert.Content>
+        </Alert>
       }
     } catch (error) {
       console.error('Error during login:', error);
