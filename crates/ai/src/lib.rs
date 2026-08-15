@@ -898,7 +898,7 @@ pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut Unbou
                 call_id: call_id.clone(),
                 tool: action.to_string(),
                 args: args.to_string(),
-            });
+            }).expect("Channel unexpectedly closed");
             while let Some(msg) = rx_out.recv().await {
                 if let TalosBus::ToolCallResult { call_id: response_id, result, .. } = msg {
                     if response_id == call_id {

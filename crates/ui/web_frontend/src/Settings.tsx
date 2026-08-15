@@ -168,16 +168,12 @@ function ThemeColorPicker() {
     return localStorage.getItem("user-theme-color") || "#0485F7";
   });
   const colorChangeHandler = (colorObject: any) => {
+    setColor(colorObject.toString("hsla"));
     const hexColor = colorObject.toString("hex");
-    setColor(hexColor);
     document.documentElement.style.setProperty("--accent", hexColor);
-    localStorage.setItem("user-theme-color", hexColor);
-    const h = Math.round(colorObject.getChannelValue("hue"))
-    const s = Math.round(colorObject.getChannelValue("saturation"))
-    const l = Math.round(colorObject.getChannelValue("lightness"))
-    const hsl = `${h} ${s}% ${l}%`;
-    document.documentElement.style.setProperty("--heroui-primary", hsl);
-    localStorage.setItem("user-theme-hsl", hsl);
+    const hslString = colorObject.toFormat("hsl").toString();
+    const formattedHsl = hslString.replace(/hsl\(|\)/g, '').replace(/,/g, '');
+    document.documentElement.style.setProperty("--heroui-primary", formattedHsl);
   };
   return (
     <ColorPicker value={color} onChange={colorChangeHandler}>
@@ -219,6 +215,10 @@ export default function SettingsPage() {
 
   const saveSettings = () => {
     setSaving(true);
+    const currentHex = document.documentElement.style.getPropertyValue("--accent");
+    const currentHsl = document.documentElement.style.getPropertyValue("--heroui-primary");
+    if (currentHex) localStorage.setItem("user-theme-color", currentHex);
+    if (currentHsl) localStorage.setItem("user-theme-hsl", currentHsl);
     apiFetch("/api/config", {
       method: "POST",
       headers: {

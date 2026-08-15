@@ -235,11 +235,11 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
             let model = tokio::task::spawn_blocking(move || {
                 load_model(
                     TtsConfig::new(ModelType::Qwen3Tts)
-                        .with_model_path(model_path)
+                        .with_model_path(model_path.to_str().expect("Error converting model path to string"))
                 ).expect("Failed to load model")
             }).await.expect("Failed to spawn blocking task");
             while let Some(text) = tts_rx.recv().await {
-                if let Err(e) = talos_audio::tts(&text.clone(), &model).await {
+                if let Err(e) = talos_audio::tts(&text.clone(), &*model).await {
                     eprintln!("TTS Error: {}", e);
                 }
             }

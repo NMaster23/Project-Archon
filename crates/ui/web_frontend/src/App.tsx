@@ -17,12 +17,6 @@ import Page2 from "./Page2";
 import Page3 from "./Page3";
 import Page4 from "./Page4";
 import Page5 from "./Page5";
-import Page6 from "./Page6";
-import Page7 from "./Page7";
-import Page8 from "./Page8";
-import Page9 from "./Page9";
-import Page10 from "./Page10";
-import Page11 from "./Page11";
 import Settings from "./Settings";
 
 import SignIn from "./SignIn";
@@ -63,24 +57,6 @@ function SideBar({ activeIndex, setActiveIndex }: { activeIndex: number | null, 
       </ListBox.Item>
       <ListBox.Item id="5" textValue="x" onClick={() => setActiveIndex(4)}>
         pg 4
-      </ListBox.Item>
-      <ListBox.Item id="6" textValue="x" onClick={() => setActiveIndex(5)}>
-        pg 5
-      </ListBox.Item>
-      <ListBox.Item id="7" textValue="x" onClick={() => setActiveIndex(6)}>
-        pg 6
-      </ListBox.Item>
-      <ListBox.Item id="8" textValue="x" onClick={() => setActiveIndex(7)}>
-        pg 7
-      </ListBox.Item>
-      <ListBox.Item id="9" textValue="x" onClick={() => setActiveIndex(8)}>
-        pg 8
-      </ListBox.Item>
-      <ListBox.Item id="10" textValue="x" onClick={() => setActiveIndex(9)}>
-        pg 9
-      </ListBox.Item>
-      <ListBox.Item id="11" textValue="x" onClick={() => setActiveIndex(10)}>
-        pg 10
       </ListBox.Item>
       <ListBox.Item id="12" textValue="Settings" onClick={() => setActiveIndex(11)}>
         <Gear color="white"/>
@@ -248,18 +224,6 @@ export default function App() {
         return <Page4 />;
       case 4:
         return <Page5 />;
-      case 5:
-        return <Page6 />;
-      case 6:
-        return <Page7 />;
-      case 7:
-        return <Page8 />;
-      case 8:
-        return <Page9 />;
-      case 9:
-        return <Page10 />;
-      case 10:
-        return <Page11 />;
       case 11:
         return <Settings />;
       case 12:
