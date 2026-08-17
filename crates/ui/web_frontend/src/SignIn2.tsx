@@ -64,7 +64,7 @@ function SignIn({
       </TextField>
       <Separator className="my-4" />
       <Button
-        onPress={() => setActiveIndex(14)}
+        onPress={() => setActiveIndex(13)}
       >
         Sign in With 2FA Code
       </Button>

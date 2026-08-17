@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import { apiFetch } from "./api";
 import {
@@ -10,8 +10,8 @@ import {
 } from "@heroui/react";
 import { Button } from "@heroui/react";
 import { Switch } from '@heroui/react';
-import { CircleDollar } from "@gravity-ui/icons";
 import { Card, Link } from "@heroui/react";
+import { useAuthStore } from "./authStore";
 
 /*
 PAGE SettingsPage
@@ -181,6 +181,27 @@ export default function SettingsPage() {
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const accounts = useAuthStore((state) => state.accounts);
+  const activeEmail = useAuthStore((state) => state.activeEmail);
+  const account = accounts.find((acc) => acc.email === activeEmail);
+  const username = account?.username || "User";
+  const profileIconKey = `profile_icon_${username}`
+  const [profileIcon, setProfileIcon] = useState(() => {
+    return localStorage.getItem(profileIconKey) || null;
+  });
+  const fileInput = useRef(null);
+  const imageChangeHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      if (typeof reader.result === 'string') {
+        const base64string = reader.result;
+        setProfileIcon(base64string);
+        localStorage.setItem(profileIconKey, base64string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
   const changeHandler = (fieldName: string, newValue: any) => {
     if (config) {
       setConfig({ ...config, [fieldName]: newValue });
@@ -235,74 +256,71 @@ export default function SettingsPage() {
     return <div>Error loading settings.</div>;
   }
   return (
-    <div className="pointer-events-auto flex flex-col items-center justify-center h-full w-fullflex w-full">
-    <Card className="w-[400px]">
-      <CircleDollar aria-label="Dollar sign icon" className="text-primary size-6" role="img" />
-      <Card.Header>
-        <Card.Title>Become an Acme Creator!</Card.Title>
-        <Card.Description>
-          Visit the Acme Creator Hub to sign up today and start earning credits from your fans and
-          followers.
-        </Card.Description>
-      </Card.Header>
-      <Card.Footer>
-        <Link
-          aria-label="Go to Acme Creator Hub (opens in new tab)"
-          href="https://heroui.com"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Creator Hub
-          <Link.Icon aria-hidden="true" />
-        </Link>
-      </Card.Footer>
-    </Card>
-      <Switch
-        isSelected={config?.run_in_background || false}
-        onChange={(value) => changeHandler("run_in_background", value)}
-      ><Switch.Content>
-          <Switch.Control>
-            <Switch.Thumb />
-          </Switch.Control>
-          Background Startup
-        </Switch.Content>
-      </Switch>
-      <Switch
-        isSelected={config?.debug_logging || false}
-        onChange={(value) => changeHandler("debug_logging", value)}
-      ><Switch.Content>
-          <Switch.Control>
-            <Switch.Thumb />
-          </Switch.Control>
-          Debug Logging
-        </Switch.Content>
-      </Switch>
-      <Switch
-        isSelected={config?.stt_disabled_by_default || false}
-        onChange={(value) => changeHandler("stt_disabled_by_default", value)}
-      ><Switch.Content>
-          <Switch.Control>
-            <Switch.Thumb />
-          </Switch.Control>
-          STT Disabled on Startup
-        </Switch.Content>
-      </Switch>
-      <Switch
-        isSelected={config?.auto_start_plugins || false}
-        onChange={(value) => changeHandler("auto_start_plugins", value)}
-      ><Switch.Content>
-          <Switch.Control>
-            <Switch.Thumb />
-          </Switch.Control>
-          Auto Start Plugins with System
-        </Switch.Content>
-      </Switch>
-      <div className="mt-8 mb-4">
-        <ThemeColorPicker />
+    <div className="pointer-events-auto flex flex-row h-full">
+      <div className="w-1/3 h-full">
+        <Card className="w-[400px]">
+          <Card.Header>
+            <Card.Title>{username}</Card.Title>
+          </Card.Header>
+          <Card.Footer>
+            
+          </Card.Footer>
+        </Card>
       </div>
-      <InteractiveButton onClick={saveSettings} disabled={saving}>
-        {saving ? "Saving..." : "Save Settings"}
-      </InteractiveButton>
+      <div className="backdrop-blur-md w-2/3 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10">
+        <Switch
+          className="w-full"
+          isSelected={config?.run_in_background || false}
+          onChange={(value) => changeHandler("run_in_background", value)}
+          size="lg"
+        ><Switch.Content 
+          className="w-full flex items-center justify-between">
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+            Background Startup
+          </Switch.Content>
+        </Switch>
+        <Switch
+          isSelected={config?.debug_logging || false}
+          onChange={(value) => changeHandler("debug_logging", value)}
+          size="lg"
+        ><Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+            Debug Logging
+          </Switch.Content>
+        </Switch>
+        <Switch
+          isSelected={config?.stt_disabled_by_default || false}
+          onChange={(value) => changeHandler("stt_disabled_by_default", value)}
+          size="lg"
+        ><Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+            STT Disabled on Startup
+          </Switch.Content>
+        </Switch>
+        <Switch
+          isSelected={config?.auto_start_plugins || false}
+          onChange={(value) => changeHandler("auto_start_plugins", value)}
+          size="lg"
+        ><Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+            Auto Start Plugins with System
+          </Switch.Content>
+        </Switch>
+        <div className="mt-8 mb-4">
+          <ThemeColorPicker />
+        </div>
+        <InteractiveButton onClick={saveSettings} disabled={saving}>
+          {saving ? "Saving..." : "Save Settings"}
+        </InteractiveButton>
+      </div>
     </div>
   );
 }

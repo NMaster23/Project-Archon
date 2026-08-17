@@ -274,7 +274,7 @@ export default function App() {
       default:
         return (
           <>
-          <div className="relative flex w-full overflow-hidden rounded-md antialiased md:items-center md:justify-center">
+          <div className="relative flex w-full h-full overflow-hidden rounded-md antialiased md:items-center md:justify-center">
              <Spotlight
                 className="-top-40 left-10 md:-top-20 md:left-1/4 z-50 mix-blend-overlay"
                fill="white"
