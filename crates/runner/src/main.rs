@@ -158,11 +158,11 @@ pub async fn start_server() -> anyhow::Result<()> {
 }
 
 pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
-    let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
-    let client_config_path = app_root.join("config.json");
+    let config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config");
+    let client_config_path = config_path.join("config.json");
     let client_config = Arc::new(RwLock::new(talos_core::ClientConfig::load(&client_config_path, talos_core::CONFIG_TEMPLATE)));
     let (icon_enabled_path, _) = talos_ui::get_icon_paths();
-    let token_path = app_root.join("session.token");
+    let token_path = config_path.join("session.token");
     let token = match std::fs::read_to_string(&token_path) {
         Ok(token) => token.trim().to_string(),
         Err(_) => {

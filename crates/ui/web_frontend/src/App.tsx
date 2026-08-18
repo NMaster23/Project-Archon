@@ -11,6 +11,7 @@ import { ListBox } from "@heroui/react";
 import { House } from '@gravity-ui/icons';
 import { Gear } from '@gravity-ui/icons';
 import { Alert } from '@heroui/react';
+import { AnimatePresence } from "motion/react";
 
 import Page1 from "./Page1";
 import Page2 from "./Page2";
@@ -377,11 +378,23 @@ export default function App() {
           </CloseButton>
         </div>
       )}
-      {isSidebarVisible && (
-        <div className="absolute left-0 top-0 bottom-0 w-1/5 z-40 bg-zinc-900 border-r border-zinc-800 p-4 pt-20 shadow-2xl">
-          <SideBar activeIndex={activeIndex} setActiveIndex={setActiveIndex}/>
-        </div>
-      )}
+      <AnimatePresence>
+        {isSidebarVisible && (
+          <motion.div
+            initial={{ x: "-100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "-100%" }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 30
+            }}
+            className="absolute left-0 top-0 bottom-0 w-[320px] z-40 bg-zinc-900 border-r border-zinc-800 p-4 pt-20 shadow-2xl"
+            >
+            <SideBar activeIndex={activeIndex} setActiveIndex={setActiveIndex}/>
+            </motion.div>
+        )}
+      </AnimatePresence>
       <div className="absolute top-4 right-4 z-100 text-white/50 font-sans">
         {serverStatus
           ? `🟢 Status ${serverStatus.status} (Uptime ${serverStatus.uptime}s)`
@@ -396,9 +409,15 @@ export default function App() {
         )}
       </div>
       <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-        <div className={`w-full h-full ${isSidebarVisible ? "pl-80" : ""}`}>
+        <motion.div animate={{ paddingLeft: isSidebarVisible ? "320px" : "0px" }} transition={{
+          type: "spring",
+          stiffness: 300,
+          damping: 30
+        }}
+        className={`w-full h-full ${isSidebarVisible ? "pl-[20%]" : ""}`}
+        >
           {renderContent()}
-        </div>
+        </motion.div>
       </div>
     </div>
   );

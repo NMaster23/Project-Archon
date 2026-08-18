@@ -176,7 +176,7 @@ pub async fn update_user_prefs(Extension(email): Extension<String>, Json(new_pre
 
 pub async fn update_server_config(State(state): State<AppState>, Json(new_config): Json<ServerConfig>) -> Response {
     let config_dir = match get_app_root(AppDataType::UserConfig, &APP_INFO) {
-        Ok(dir) => dir,
+        Ok(dir) => dir.join("config"),
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
     new_config.save(&config_dir.join("server_config.json"));

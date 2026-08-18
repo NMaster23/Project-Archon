@@ -575,7 +575,7 @@ pub async fn agy_backend(mut rx_out: UnboundedReceiver<TalosBus>, tx_in: tokio::
 
 pub async fn create_config() -> Result<(), Box<dyn std::error::Error>> {
     let app_root = get_app_root(UserConfig, &APP_INFO)?;
-    let config_file = app_root.join("config.json");
+    let config_file = app_root.join("config").join("config.json");
     fs::write(config_file, talos_core::CONFIG_TEMPLATE)?;
     Ok(())
 }

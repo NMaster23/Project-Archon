@@ -8,10 +8,13 @@ import {
   ColorSwatch,
   Label,
 } from "@heroui/react";
-import { Button } from "@heroui/react";
 import { Switch } from '@heroui/react';
 import { Card, Link } from "@heroui/react";
 import { useAuthStore } from "./authStore";
+import ConfigEditor from "./ConfigEditor";
+import { Button, CloseButton } from "@heroui/react";
+import {PencilToSquare} from '@gravity-ui/icons';
+import {Person} from '@gravity-ui/icons';
 
 /*
 PAGE SettingsPage
@@ -179,6 +182,7 @@ function ThemeColorPicker() {
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<Config | null>(null);
+  const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const accounts = useAuthStore((state) => state.accounts);
@@ -189,15 +193,17 @@ export default function SettingsPage() {
   const [profileIcon, setProfileIcon] = useState(() => {
     return localStorage.getItem(profileIconKey) || null;
   });
-  const fileInput = useRef(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const imageChangeHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      if (typeof reader.result === 'string') {
-        const base64string = reader.result;
-        setProfileIcon(base64string);
-        localStorage.setItem(profileIconKey, base64string);
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          const base64string = reader.result;
+          setProfileIcon(base64string);
+          localStorage.setItem(profileIconKey, base64string);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -257,15 +263,56 @@ export default function SettingsPage() {
   }
   return (
     <div className="pointer-events-auto flex flex-row h-full">
-      <div className="w-1/3 h-full">
+      <div className="ml-12 w-1/3 h-full pt-24 flex flex-col gap-4">
         <Card className="w-[400px]">
           <Card.Header>
             <Card.Title>{username}</Card.Title>
           </Card.Header>
           <Card.Footer>
-            
+            {profileIcon ? (
+              <img
+              src={profileIcon || undefined}
+              alt="Avatar"
+              className="w-32 h-32 rounded-full object-cover border-4 border-zinc-800"
+              />
+            ) : (
+              <div className="w-32 h-32 rounded-full bg-zinc-800 border-4 border-zinc-700 flex items-center justify-center">
+                <Person className="w-16 h-16" color="white" />
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image//*"
+              ref={fileInput}
+              className="hidden"
+              onChange={imageChangeHandler}
+              />
+              <Button
+                className="left-10 bottom-1"
+                onClick={() =>
+                  fileInput.current?.click()
+                }
+              >
+                Upload Avatar
+              </Button>
           </Card.Footer>
         </Card>
+        <div className="absolute top-4 left-18 z-50">
+          <CloseButton
+            className="w-12 h-12"
+            onClick={ (() => setIsEditorVisible(!isEditorVisible))}
+            >
+            <PencilToSquare color="white"/>
+          </CloseButton>
+        </div>
+        {isEditorVisible && (
+          <div className="flex-1 min-h-0 mr-8 mb-4">
+            <ConfigEditor
+              config={config}
+              onChange={(newConfig) => setConfig(newConfig)}
+            />
+          </div>
+        )}
       </div>
       <div className="backdrop-blur-md w-2/3 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10">
         <Switch
