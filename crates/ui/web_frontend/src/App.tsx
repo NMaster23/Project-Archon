@@ -381,15 +381,15 @@ export default function App() {
       <AnimatePresence>
         {isSidebarVisible && (
           <motion.div
-            initial={{ x: "-100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "-100%" }}
+            initial={{ x: "-100%", opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "-100%", opacity: 0 }}
             transition={{
               type: "spring",
               stiffness: 300,
               damping: 30
             }}
-            className="absolute left-0 top-0 bottom-0 w-[320px] z-40 bg-zinc-900 border-r border-zinc-800 p-4 pt-20 shadow-2xl"
+            className="absolute left-0 top-0 bottom-0 w-[320px] z-40 bg-zinc-900/40 backdrop-blur-xl border-r border-white/10 p-4 pt-20 shadow-2xl"
             >
             <SideBar activeIndex={activeIndex} setActiveIndex={setActiveIndex}/>
             </motion.div>
