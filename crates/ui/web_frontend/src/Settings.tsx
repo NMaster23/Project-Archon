@@ -9,7 +9,7 @@ import {
   Label,
 } from "@heroui/react";
 import { Switch } from '@heroui/react';
-import { Card, Link } from "@heroui/react";
+import { Card } from "@heroui/react";
 import { useAuthStore } from "./authStore";
 import ConfigEditor from "./ConfigEditor";
 import { Button, CloseButton } from "@heroui/react";

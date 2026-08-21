@@ -153,6 +153,7 @@ impl ArchonExtensionImports for PluginState {
 pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::TalosBus>) -> Result<Vec<(String, ArchonExtension, Store<PluginState>)>> {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
     let plugin_dir = app_root.join("Plugins");
+    tokio::fs::create_dir_all(&plugin_dir).await?;
     let plugin_db = plugin_dir.join("plugins.db");
     let db = Builder::new_local(plugin_db.to_str().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Plugin to string error"))?).build().await?;
     let conn = db.connect()?;
@@ -183,9 +184,9 @@ pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::Talo
     ).await?;
     let mut config = Config::new();
     config.wasm_component_model(true);
+    config.async_support(true);
     let engine = Engine::new(&config)?;
     let mut plugins = Vec::new();
-    tokio::fs::create_dir_all(&plugin_dir).await?;
     let mut entries = tokio::fs::read_dir(plugin_dir.clone()).await?;
     let mut linker = wasmtime::component::Linker::<PluginState>::new(&engine);
     wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;

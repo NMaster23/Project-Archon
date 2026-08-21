@@ -159,7 +159,7 @@ pub async fn get_user_preferences(Extension(email): Extension<String>) -> Respon
             return (StatusCode::INTERNAL_SERVER_ERROR, "Could not find path").into_response();
         }
     };
-    let preferences_path = config_dir.join(format!("{}.json", email));
+    let preferences_path = config_dir.join(format!("{}_prefs.json", email));
     let preferences = UserPreferences::load(&preferences_path, "{}");
     Json(preferences).into_response()
 }

@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import {Check} from "@gravity-ui/icons";
-import {Separator} from "@heroui/react";
-import {Button, FieldError, Form, Input, Label, TextField} from "@heroui/react";
+import { Check } from "@gravity-ui/icons";
+import { Button, FieldError, Form, Input, Label, TextField, Separator } from "@heroui/react";
 import { useAuthStore } from './authStore';
 import { alertTrigger } from "./alert";
-import { CloseButton } from '@heroui/react';
 
 interface SignInProps {
   setActiveIndex: (index: number | null) => void;

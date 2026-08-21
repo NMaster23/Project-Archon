@@ -293,7 +293,8 @@ impl Iterator for StreamingSource {
     fn next(&mut self) -> Option<Self::Item> {
         match self.receiver.try_recv() {
             Ok(sample) => Some(sample),
-            Err(_) => Some(0.0),
+            Err(std::sync::mpsc::TryRecvError::Empty) => Some(0.0),
+            Err(_) => None,
         }
     }
 }
@@ -409,12 +410,7 @@ pub async fn gemini_communicate_speech(
                 }
                 ServerEvent::TurnComplete => {
                     let final_msg = format!("AI: {}", gemini_response);
-                    let _ =
-                        tx_in.send(TalosBus::TerminalOutput(final_msg));
-                    if !gemini_response.trim().is_empty() {
-                        agy_session.execute(&gemini_response);
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                    }
+                    let _ = tx_in.send(TalosBus::TerminalOutput(final_msg));
                     break;
                 }
                 _ => {}
@@ -879,7 +875,7 @@ pub async fn retrieve_memories(query: &str, limit: u32) -> Result<Vec<String>, B
 
 pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut UnboundedReceiver<TalosBus>, input: &str, model: &Model) -> Result<(), Box<dyn std::error::Error>> {
     let loaded_skills = load_skills().await;
-    let active_prompt = REACT_PROMPT.replace("{loaded_skills}", &loaded_skills).replace("{tools}", "cursor_move, mouse_click, mouse_scroll, key_press, key_type, view_screen");
+    let active_prompt = REACT_PROMPT.replace("{skills}", &loaded_skills).replace("{tools}", "cursor_move, mouse_click, mouse_scroll, key_press, key_type, view_screen");
     let mut enriched_input = input.trim().to_string();
     if let Ok(mem) = retrieve_memories(&enriched_input, 3).await {
         if !mem.is_empty() {
@@ -889,8 +885,9 @@ pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut Unbou
     let mut history = format!("System: {}\n\nUser: {}", active_prompt, enriched_input);
     loop {
         let output = model.chat(history.clone()).await?;
-        if output.starts_with("{") {
-            let json: serde_json::Value = serde_json::from_str(&output)?;
+        if let Some(action_start) = output.find("Action: ") {
+            let json_str = &output[action_start + 8..];
+            let json: serde_json::Value = serde_json::from_str(&json_str)?;
             let action = json["action"].as_str().expect("Json parsing error ReAct");
             let args = json["args"].to_string();
             let call_id = format!("call_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis() as u32);

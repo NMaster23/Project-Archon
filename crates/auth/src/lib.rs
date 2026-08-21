@@ -221,7 +221,8 @@ pub async fn totp_setup_handler(
     Json(payload): Json<SignUpRequest>,
 ) -> Result<Json<SetupResponse>, StatusCode> {
     let response = totp_setup(&payload.email).await.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-    let encrypted_password = argon2::hash_encoded(&payload.password.as_bytes(), &payload.username.as_bytes(), &Config::default()).expect("Failed to hash password");
+    let salt: [u8; 16] = rand::random();
+    let encrypted_password = argon2::hash_encoded(payload.password.as_bytes(), &salt, &Config::default()).expect("Failed to hash password");
     let data = UserData {
         username: payload.username,
         password: encrypted_password,

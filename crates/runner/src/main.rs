@@ -82,7 +82,7 @@ pub async fn start_server() -> anyhow::Result<()> {
             let user_prefs = UserPreferences::load(&prefs_path, "{}");
             let token_budget = user_prefs.max_output_tokens;
             if user_prefs.backend == "API" {
-                let opt_auth_data = get_auth(email.as_deref(), 1).await;
+                let opt_auth_data = get_auth(email.as_deref(), 2).await;
                 if let Some(auth_data) = opt_auth_data {
                     let api_key = auth_data.data;
                     tokio::spawn(async move {
@@ -209,6 +209,21 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
             eprintln!("STT error: {:?}", e);
         }
     });
+    let (tts_tx, mut tts_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    tokio::spawn(async move {
+        let model_path = dirs::data_local_dir().expect("Directory error").join("Talos/models/Qwen3-TTS");
+        let model = tokio::task::spawn_blocking(move || {
+            load_model(
+                TtsConfig::new(ModelType::Qwen3Tts)
+                    .with_model_path(model_path.to_str().expect("Error converting model path to string"))
+            ).expect("Failed to load model")
+        }).await.expect("Failed to spawn blocking task");
+        while let Some(text) = tts_rx.recv().await {
+            if let Err(e) = talos_audio::tts(&text.clone(), &*model).await {
+                eprintln!("TTS Error: {}", e);
+            }
+        }
+    });
     loop {
         conn = match talos_transport::connect(&ws_url).await {
             Ok(c) => c,
@@ -217,7 +232,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
                 continue;
             }
         };
-        let token_path = app_dirs2::get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("session.token");
+        let token_path = app_dirs2::get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("config").join("session.token");
         let token = match std::fs::read_to_string(&token_path) {
             Ok(t) => t.trim().to_string(),
             Err(_) => {
@@ -229,21 +244,6 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
             eprintln!("Client credentials error: {:?}", e);
             continue;
         }
-        let (tts_tx, mut tts_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        tokio::spawn(async move {
-            let model_path = dirs::data_local_dir().expect("Directory error").join("Talos/models/Qwen3-TTS");
-            let model = tokio::task::spawn_blocking(move || {
-                load_model(
-                    TtsConfig::new(ModelType::Qwen3Tts)
-                        .with_model_path(model_path.to_str().expect("Error converting model path to string"))
-                ).expect("Failed to load model")
-            }).await.expect("Failed to spawn blocking task");
-            while let Some(text) = tts_rx.recv().await {
-                if let Err(e) = talos_audio::tts(&text.clone(), &*model).await {
-                    eprintln!("TTS Error: {}", e);
-                }
-            }
-        });
         loop {
             tokio::select! {
                 Some(msg) = stt_rx.recv() => {

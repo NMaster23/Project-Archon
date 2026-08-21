@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { useAuthStore } from './authStore';
-import { CloseButton, InputOTP } from '@heroui/react';
-import {Check} from "@gravity-ui/icons";
-import {Button, FieldError, Form, Input, Label, TextField} from "@heroui/react";
-import {Separator} from "@heroui/react";
+import { Check } from "@gravity-ui/icons";
+import { Button, FieldError, Form, Input, Label, TextField, InputOTP, Separator } from "@heroui/react";
 import { alertTrigger } from "./alert";
 
 interface SignInProps {

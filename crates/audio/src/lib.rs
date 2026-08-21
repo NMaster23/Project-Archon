@@ -17,7 +17,7 @@ pub fn stt(
     speaking: Arc<AtomicBool>,
     stt_disabled: Arc<AtomicBool>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let model_path = dirs::data_local_dir().expect("Directory error").join("Talos/models/moonshine-streaming-medium-onnx");
+    let model_path = dirs::data_local_dir().expect("Directory error").join("models/moonshine-streaming-medium-onnx");
     let mut model = StreamingModel::load(
         &PathBuf::from(model_path),
         4,
