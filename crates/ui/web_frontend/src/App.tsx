@@ -19,7 +19,6 @@ import Page1 from "./Page1";
 import Page2 from "./Page2";
 import Page3 from "./Page3";
 import Page4 from "./Page4";
-import Page5 from "./Page5";
 import Settings from "./Settings";
 
 import SignIn from "./SignIn";
@@ -259,8 +258,6 @@ export default function App() {
         return <Page3 chatHistory={chatHistory} />;
       case 3:
         return <Page4 websocket={websocket} />;
-      case 4:
-        return <Page5 />;
       case 11:
         return <Settings />;
       case 12:

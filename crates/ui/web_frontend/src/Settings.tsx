@@ -310,7 +310,7 @@ export default function SettingsPage() {
           </CloseButton>
         </div>
       </div>
-      <div className="backdrop-blur-md flex-1 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10 rounded-xl ">
+      <div className="backdrop-blur-md flex-1 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10 rounded-xl">
         <Switch
           className="w-full"
           isSelected={config?.run_in_background || false}
