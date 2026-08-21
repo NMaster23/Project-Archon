@@ -15,6 +15,7 @@ import ConfigEditor from "./ConfigEditor";
 import { Button, CloseButton } from "@heroui/react";
 import {PencilToSquare} from '@gravity-ui/icons';
 import {Person} from '@gravity-ui/icons';
+import { AnimatePresence } from "motion/react";
 
 /*
 PAGE SettingsPage
@@ -262,9 +263,9 @@ export default function SettingsPage() {
     return <div>Error loading settings.</div>;
   }
   return (
-    <div className="pointer-events-auto flex flex-row h-full">
+    <div className="pointer-events-auto flex flex-row h-full gap-4">
       <div className="ml-12 w-1/3 h-full pt-24 flex flex-col gap-4">
-        <Card className="w-[400px]">
+        <Card className="w-full right-6">
           <Card.Header>
             <Card.Title>{username}</Card.Title>
           </Card.Header>
@@ -297,6 +298,9 @@ export default function SettingsPage() {
               </Button>
           </Card.Footer>
         </Card>
+        <div className="mt-8 mb-4">
+          <ThemeColorPicker />
+        </div>
         <div className="absolute top-4 left-18 z-50">
           <CloseButton
             className="w-12 h-12"
@@ -305,23 +309,15 @@ export default function SettingsPage() {
             <PencilToSquare color="white"/>
           </CloseButton>
         </div>
-        {isEditorVisible && (
-          <div className="flex-1 min-h-0 mr-8 mb-4">
-            <ConfigEditor
-              config={config}
-              onChange={(newConfig) => setConfig(newConfig)}
-            />
-          </div>
-        )}
       </div>
-      <div className="backdrop-blur-md w-2/3 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10">
+      <div className="backdrop-blur-md flex-1 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10 rounded-xl ">
         <Switch
           className="w-full"
           isSelected={config?.run_in_background || false}
           onChange={(value) => changeHandler("run_in_background", value)}
           size="lg"
         ><Switch.Content 
-          className="w-full flex items-center justify-between">
+          className="w-full flex items-center">
             <Switch.Control>
               <Switch.Thumb />
             </Switch.Control>
@@ -361,13 +357,30 @@ export default function SettingsPage() {
             Auto Start Plugins with System
           </Switch.Content>
         </Switch>
-        <div className="mt-8 mb-4">
-          <ThemeColorPicker />
-        </div>
         <InteractiveButton onClick={saveSettings} disabled={saving}>
           {saving ? "Saving..." : "Save Settings"}
         </InteractiveButton>
       </div>
+      <AnimatePresence>
+        {isEditorVisible && (
+          <motion.div
+            initial={{ y: "-100%", opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: "-100%", opacity: 0 }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 30
+            }}
+            className="flex-1 min-h-0 mr-8 mb-4 w-full h-full"
+          >
+            <ConfigEditor
+            config={config}
+              onChange={(newConfig) => setConfig(newConfig)}
+            />
+          </motion.div>
+      )}
+      </AnimatePresence>
     </div>
   );
 }

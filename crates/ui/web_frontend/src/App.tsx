@@ -6,12 +6,14 @@ import { useAuthStore } from "./authStore";
 import { Button, CloseButton } from "@heroui/react";
 import { Spotlight } from "./components/ui/spotlight";
 import { motion } from "motion/react";
-import {Bars, HouseFill} from '@gravity-ui/icons';
+import {Bars, Binoculars, HandPointUp, HouseFill, Puzzle} from '@gravity-ui/icons';
 import { ListBox } from "@heroui/react";
 import { House } from '@gravity-ui/icons';
 import { Gear } from '@gravity-ui/icons';
-import { Alert } from '@heroui/react';
 import { AnimatePresence } from "motion/react";
+import { alertTrigger, GlobalAlert } from "./alert";
+import { StatusDot } from "./StatusDot";
+import {ChartColumn} from '@gravity-ui/icons';
 
 import Page1 from "./Page1";
 import Page2 from "./Page2";
@@ -48,16 +50,20 @@ function SideBar({ activeIndex, setActiveIndex }: { activeIndex: number | null, 
           Dashboard
       </ListBox.Item>
       <ListBox.Item id="2" textValue="x" onClick={() => setActiveIndex(1)}>
-        pg 1
+        <Puzzle />
+        Plugins
       </ListBox.Item>
       <ListBox.Item id="3" textValue="x" onClick={() => setActiveIndex(2)}>
-        pg 2
+        <HandPointUp />
+        Interact
       </ListBox.Item>
       <ListBox.Item id="4" textValue="x" onClick={() => setActiveIndex(3)}>
-        pg 3
+        <Binoculars />
+        Sessions
       </ListBox.Item>
       <ListBox.Item id="5" textValue="x" onClick={() => setActiveIndex(4)}>
-        pg 4
+        <ChartColumn />
+        Resource Usage
       </ListBox.Item>
       <ListBox.Item id="12" textValue="Settings" onClick={() => setActiveIndex(11)}>
         <Gear color="white"/>
@@ -78,6 +84,7 @@ export default function App() {
   const [clientHistory, setClientHistory] = useState<string[]>([]);
   const [serverHistory, setServerHistory] = useState<string[]>([]);
   const [toolHistory, setToolHistory] = useState<string[]>([]);
+  const [websocket, setWebsocket] = useState<WebSocket | null>(null);
   const failCountRef = useRef(0);
   const MAX_RETRIES = 100;
   useEffect(() => {
@@ -90,7 +97,11 @@ export default function App() {
     const fetchConfig = async () => {
       const token = useAuthStore.getState().getActiveToken();
       if (!token) {
-        return;
+        alertTrigger.warning(
+          "Authentication Required",
+          "No active session found. Please sign in to load configuration."
+        );
+        return
       }
       try {
         const response = await apiFetch("/api/config", { method: "GET" });
@@ -98,53 +109,35 @@ export default function App() {
           console.log("Error Code:", response.status);
           const errorMessage = await response.text();
           console.error("Error Message:", errorMessage);
-          <Alert status="danger">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>Unable to connect to server</Alert.Title>
-              <Alert.Description>
-                Server Error ${response.status}: ${errorMessage}
+          alertTrigger.danger(
+            "Unable to connect to server",
+            <>
+              Server Error ${response.status}: ${errorMessage}
                 We're experiencing connection issues. Please try the following:
                 <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
                   <li>Check your internet connection</li>
                   <li>Refresh the page</li>
                   <li>Clear your browser cache</li>
                 </ul>
-              </Alert.Description>
-              <Button className="mt-2 sm:hidden" size="sm" variant="danger">
-                Retry
-              </Button>
-            </Alert.Content>
-            <Button className="hidden sm:block" size="sm" variant="danger">
-              Retry
-            </Button>
-          </Alert>
+            </>
+          );
           return;
         }
         const config = await response.json();
         console.log("Fetched config:", config);
       } catch (error) {
         console.error("Error fetching config:", error);
-        <Alert status="danger">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>Error fetching config. Please check the console for details</Alert.Title>
-            <Alert.Description>
-              We're experiencing connection issues. Please try the following:
-              <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
-                <li>Check your internet connection</li>
-                <li>Refresh the page</li>
-                <li>Clear your browser cache</li>
-              </ul>
-            </Alert.Description>
-            <Button className="mt-2 sm:hidden" size="sm" variant="danger">
-              Retry
-            </Button>
-          </Alert.Content>
-          <Button className="hidden sm:block" size="sm" variant="danger">
-            Retry
-          </Button>
-        </Alert>
+        alertTrigger.danger(
+          "Error fetching config. Please check the console for details",
+          <>
+            We're experiencing connection issues. Please try the following:
+            <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
+              <li>Check your internet connection</li>
+              <li>Refresh the page</li>
+              <li>Clear your browser cache</li>
+            </ul>
+          </>
+        );
       }
     };
 
@@ -187,6 +180,7 @@ export default function App() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/api/talosbus?token=${token}`;
     const socket = new WebSocket(wsUrl);
+    setWebsocket(socket);
 
     socket.onopen = () => {
       console.log("✅ Connected to TalosBus");
@@ -243,7 +237,10 @@ export default function App() {
       console.log("🔌 Disconnected from TalosBus");
     };
 
-    return () => socket.close();
+    return () => {
+      setWebsocket(null);
+      socket.close();
+    };
   }, []);
 
   const renderContent = () => {
@@ -261,7 +258,7 @@ export default function App() {
       case 2:
         return <Page3 chatHistory={chatHistory} />;
       case 3:
-        return <Page4 />;
+        return <Page4 websocket={websocket} />;
       case 4:
         return <Page5 />;
       case 11:
@@ -368,6 +365,7 @@ export default function App() {
       ref={containerRef}
       className="w-screen h-screen relative overflow-hidden bg-black"
     >
+      <GlobalAlert />
       {isLoggedIn && (
         <div className="absolute top-4 left-4 z-50">
           <CloseButton
@@ -395,10 +393,17 @@ export default function App() {
             </motion.div>
         )}
       </AnimatePresence>
-      <div className="absolute top-4 right-4 z-100 text-white/50 font-sans">
-        {serverStatus
-          ? `🟢 Status ${serverStatus.status} (Uptime ${serverStatus.uptime}s)`
-          : "🔴 Connecting to backend..."}
+      <div className="absolute bottom-4 left-4 z-100 text-white/50 font-sans">
+        {serverStatus ? (
+          <span className="flex items-center gap-2">
+            <StatusDot status="online" />
+            Status {serverStatus.status} (Uptime {serverStatus.uptime}s)
+          </span>
+        ) : (
+          <span className="flex items-center gap-2">
+            🔴 Connecting to backend...
+          </span>
+        )}
       </div>
       <div className="absolute inset-0 z-0">
         {!isLoggedIn ? (

@@ -4,7 +4,7 @@ interface Page3Props {
 
 export default function Page3({ chatHistory }: Page3Props) {
   return (
-    <div className="text-white p-8 h-full flex flex-col max-w-4xl mx-auto">
+    <div className="text-white p-8 h-full flex flex-col w-full mx-auto">
       <h1 className="text-4xl font-bold mb-8 bg-gradient-to-r from-[#00f2fe] to-[#4facfe] bg-clip-text text-transparent">Talos AI Core</h1>
       
       <div className="flex-1 bg-white/5 backdrop-blur-md rounded-2xl p-6 border border-white/10 overflow-y-auto font-mono text-sm shadow-2xl flex flex-col gap-2">

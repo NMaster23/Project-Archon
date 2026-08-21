@@ -3,7 +3,7 @@ import {Check} from "@gravity-ui/icons";
 import {Separator} from "@heroui/react";
 import {Button, FieldError, Form, Input, Label, TextField} from "@heroui/react";
 import { useAuthStore } from './authStore';
-import { Alert } from '@heroui/react';
+import { alertTrigger } from "./alert";
 import { CloseButton } from '@heroui/react';
 
 interface SignInProps {
@@ -100,22 +100,11 @@ const SignIn2: React.FC<SignInProps> = ({ setActiveIndex }) => {
           sessionToken: data.token || data.sessionToken
         });
         console.log("Login successful!");
-        <Alert status="success">
-          <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>Successfully Logged In</Alert.Title>
-            </Alert.Content>
-          <CloseButton />
-        </Alert>
+        alertTrigger.success("Successfully Logged In", "");
         setActiveIndex(0); 
       } else {
         console.error("Login failed. Check your password.");
-        <Alert status="danger">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>Login failed please try again</Alert.Title>
-          </Alert.Content>
-        </Alert>
+        alertTrigger.danger("Login Failed. Please try again.", "")
       }
     } catch (error) {
       console.error('Error during login:', error);

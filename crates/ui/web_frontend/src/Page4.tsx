@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v7 as uuidv7 } from 'uuid';
+import { Card } from "@heroui/react";
+import { StatusDot } from "./StatusDot";
+import { useAuthStore } from "./authStore";
 
 export interface Peer {
   id: string;
@@ -15,11 +18,33 @@ interface Presence {
   clientOs?: string;
 }
 
-export default function Page4() {
+export default function Page4({ websocket }: { websocket: WebSocket | null }) {
+  const accounts = useAuthStore((state) => state.accounts);
+  const email = useAuthStore((state) => state.activeEmail);
+  const acc = accounts.find((acc) => acc.email === email);
+  const username = acc?.username || "Dashboard User"
+  const clients = clientPresenceDetection(websocket);
   return (
     <div style={{ color: 'white', padding: '2rem' }}>
       <h1>Currently Connected Clients</h1>
-      <p>Content for sidebar position 4</p>
+      <ul>
+        {clients.map((client) => (
+          <li key={client.id}>
+            <Card className="right-6">
+          <Card.Header>
+            <Card.Title className="flex flex-row items-center gap-2">
+              <StatusDot /> {username}
+            </Card.Title>
+          </Card.Header>
+          <Card.Footer className="flex flex-col items-start">
+            <div><strong>Last Online:</strong> {new Date(client.lastOnline).toLocaleString()}</div>
+            <div><strong>Operating System:</strong> {client.clientOs}</div>
+            <div><strong>Email:</strong> {email}</div>
+          </Card.Footer>
+        </Card>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -90,5 +115,25 @@ function clientPresenceDetection(websocket: WebSocket | null, clientName = "Dash
         }
       } catch { return }
     };
+    function unload() {
+      presenceBroadcast("presence:exit");
+    }
+    websocket.addEventListener("message", handleMessage);
+    window.addEventListener("beforeunload", unload);
+    return () => {
+      unload()
+      clearInterval(ping)
+      clearInterval(offline)
+      websocket.removeEventListener("message", handleMessage)
+      websocket.removeEventListener("close", unload)
+      window.removeEventListener("beforeunload", unload)
+    }
   }, [websocket, clientName, sendMessage])
+  const client: Peer = {
+    id: RefID.current,
+    name: clientName,
+    clientOs: window.navigator.platform,
+    lastOnline: Date.now()
+  }
+  return [client, ...Array.from(peers.values())]
 }
