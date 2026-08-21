@@ -1,7 +1,9 @@
 import { create } from "zustand";
-import { Alert, Button, CloseButton } from '@heroui/react';
+import { Alert, CloseButton } from '@heroui/react';
+import { AnimatePresence, motion } from "framer-motion";
 
-interface AlertData {
+export interface AlertData {
+    id?: string | number;
     header: string;
     msg: React.ReactNode;
     type?: "danger" | "warning" | "success" | "primary" | "default"
@@ -52,21 +54,34 @@ export function GlobalAlert() {
         current,
         clear
     } = useAlertStore();
-    if (!current) {
-        return null;
-    }
     return (
-        <div className="fixed top-6 z-50 w-full max-w-md px-4 pointer-events-auto right-6">
-            <Alert status={current.type === "primary" ? "accent" : (current.type || "danger")}>
-                <Alert.Indicator />
-                <Alert.Content>
-                    <Alert.Title>{current.header}</Alert.Title>
-                    <Alert.Description>
-                        {current.msg}
-                    </Alert.Description>
-                    <CloseButton onClick={clear} className="absolute top-3 right-2"/>
-                </Alert.Content>
-            </Alert>
+        <div className="fixed top-6 right-6 z-50 w-full max-w-md px-4 pointer-events-auto">
+            <AnimatePresence>
+                {current && (
+                <motion.div
+                    key={current.id || current.header || "alert-box"}
+                    initial={{ x: "200%", opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: "200%", opacity: 0 }}
+                    transition={{
+                    type: "spring",
+                    stiffness: 300,
+                    damping: 30
+                    }}
+                >
+                <Alert status={current.type === "primary" ? "accent" : (current.type || "danger")}>
+                    <Alert.Indicator />
+                    <Alert.Content>
+                        <Alert.Title>{current.header}</Alert.Title>
+                        <Alert.Description>
+                            {current.msg}
+                        </Alert.Description>
+                        <CloseButton onClick={clear} className="absolute right-3 -translate-x-1/2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"/>
+                    </Alert.Content>
+                </Alert>
+                </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     )
 }
