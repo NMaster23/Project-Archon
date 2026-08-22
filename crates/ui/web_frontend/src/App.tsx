@@ -60,10 +60,6 @@ function SideBar({ activeIndex, setActiveIndex }: { activeIndex: number | null, 
         <Binoculars />
         Sessions
       </ListBox.Item>
-      <ListBox.Item id="5" textValue="x" onClick={() => setActiveIndex(4)}>
-        <ChartColumn />
-        Resource Usage
-      </ListBox.Item>
       <ListBox.Item id="12" textValue="Settings" onClick={() => setActiveIndex(11)}>
         <Gear color="white"/>
         Settings
@@ -141,7 +137,7 @@ export default function App() {
     };
 
     fetchConfig();
-  }, []);
+  }, [isLoggedIn]);
   useEffect(() => {
     const checkServer = () => {
       fetch("/api/status")
@@ -410,7 +406,7 @@ export default function App() {
           </MeteorShower>
         )}
       </div>
-      <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
+      <div className="absolute inset-0 z-10 pointer-events-auto flex items-center justify-center">
         <motion.div animate={{ paddingLeft: isSidebarVisible ? "320px" : "0px" }} transition={{
           type: "spring",
           stiffness: 300,

@@ -95,6 +95,9 @@ pub struct ServerConfig {
     pub debug_logging: bool,
     pub plugin_directory: String,
     pub allowed_mcp_servers: Vec<String>,
+    pub auto_start_plugins: bool,
+    pub ai_permissions: Vec<String>,
+    pub gemini_api_key: String,
 }
 
 impl ConfigFile for ServerConfig {}

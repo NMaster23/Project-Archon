@@ -6,6 +6,7 @@ import {Button, FieldError, Form, Input, Label, TextField} from "@heroui/react";
 import {ProgressBar} from "@heroui/react";
 import zxcvbn from 'zxcvbn';
 import { alertTrigger } from "./alert";
+import { useAuthStore } from './authStore';
 
 interface SignUpProps {
   setActiveIndex: (index: number | null) => void;
@@ -185,6 +186,7 @@ function Setup2FAForm({
 }
 
 const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
+  const addAccount = useAuthStore((state) => state.addAccount);
   const [step, setStep] = useState<'signup' | 'setup_2fa'>('signup');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -219,6 +221,12 @@ const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
 
       if (response.ok) {
         const data = await response.json();
+        addAccount({
+          username,
+          email,
+          secret: data.secret,
+          sessionToken: data.sessionToken,
+        });
         setQrCode(data.qr_code_base64);
         setStep('setup_2fa');
       } else {

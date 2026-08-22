@@ -3,25 +3,30 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, fs};
 use std::collections::HashMap;
-use std::io::ErrorKind;
+use std::fs::File;
+use std::io::{ErrorKind, Write};
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Instant;
 use axum::routing::{get, post};
 use axum::{http::{header, StatusCode, Uri}, response::{IntoResponse, Response}, Json, Router, Extension};
-use axum::extract::{Query, State};
+use axum::extract::{Multipart, Query, State};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use rust_embed::RustEmbed;
 use tokio::sync::mpsc;
 use notify_rust::{Notification, Timeout};
 use app_dirs2::{AppDataType, AppInfo, get_app_root};
-use tokio::io::BufReader;
+use serde_json::{json, Value};
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::io::AsyncBufReadExt;
+use tokio::time;
+use tower_http::classify::GrpcFailureClass::Status;
 use talos_core::{ClientConfig, ServerConfig, UserPreferences};
 use talos_core::ConfigFile;
 use turso::Builder;
 use talos_auth::verify_session_token;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const ICON_ENABLED_BYTES: &[u8] = include_bytes!("../../../assets/Icon.png");
 const ICON_DISABLED_BYTES: &[u8] = include_bytes!("../../../assets/Icon_Disabled.png");
@@ -383,6 +388,40 @@ pub async fn update_plugin_permissions(axum::extract::Path(plugin_id): axum::ext
     return StatusCode::OK.into_response();
 }
 
+pub async fn install_plugin(mut multipart: Multipart) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    while let Ok(Some(mut field)) = multipart.next_field().await {
+        if field.name() == Some("plugin_binary") {
+            let formatted_filename = field.file_name().map(|s| s.to_string()).unwrap_or_else(|| format!("{}_.wasm", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis())).to_string();
+            let safe_filename = std::path::Path::new(&formatted_filename)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name.to_string())
+                .unwrap_or_else(|| format!("{}_.wasm", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()));
+            let file_path = get_app_root(AppDataType::UserConfig, &APP_INFO)
+                .expect("Failed to get WASM Directory")
+                .join("Plugins")
+                .join(&safe_filename);
+            let mut file = tokio::fs::File::create(&file_path).await.map_err(|e| {
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
+            })?;
+            while let Ok(Some(chunk)) = field.chunk().await {
+                file.write_all(&chunk).await.map_err(|e| {
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
+                })?;
+            }
+            return Ok(Json(json!({
+                "success": true,
+                "message": "Plugin saved successfully",
+                "filename": safe_filename
+            })));
+        }
+    }
+    Err((
+        StatusCode::BAD_REQUEST,
+        Json(json!({ "error": "Missing plugin_binary field" }))
+    ))
+}
+
 pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>, config: Arc<std::sync::RwLock<ServerConfig>>) {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).expect("Failed to get user config");
     let plugin_dir = app_root.join("Plugins");
@@ -405,6 +444,7 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
         .route("/api/user/prefs", get(get_user_preferences).post(update_user_prefs))
         .route("/api/plugins/{plugin_id}/permissions", post(update_plugin_permissions))
         .route("/api/plugins/{plugin_id}/config", get(get_plugin_config).post(update_plugin_config))
+        .route("/api/plugins/install", post(install_plugin))
         .route_layer(axum::middleware::from_fn(talos_auth::axum_auth))
         .with_state(state.clone());
     let public_router = Router::new()

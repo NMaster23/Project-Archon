@@ -28,7 +28,7 @@ export default function Page2() {
     const form = new FormData();
     form.append("plugin_binary", file);
     try {
-      const res = await fetch('/api/v1/plugins/install', {
+      const res = await fetch('/api/plugins/install', {
         method: 'POST',
         body: form,
       });

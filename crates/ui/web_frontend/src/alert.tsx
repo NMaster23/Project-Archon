@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { Alert, CloseButton } from '@heroui/react';
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 
 export interface AlertData {
     id?: string | number;

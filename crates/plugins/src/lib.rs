@@ -246,7 +246,7 @@ pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::Talo
     Ok(plugins)
 }
 
-pub async fn install_plugin(plugin_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn install_plugin_url(plugin_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
     let plugin_dir = app_root.join("Plugins");
     let fallback_plugin = format!("{}.wasm", plugin_url);

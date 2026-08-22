@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 tokio = { version = "1.52.3", features = ["sync", "rt", "macros", "process", "io-util"] }
-axum = {  version = "0.8.9", features = ["ws"] }
+axum = {  version = "0.8.9", features = ["ws", "multipart"] }
 rust-embed = "8.12.0"
 mime_guess = "2.0.5"
 serde = { workspace = true, features = ["derive"] }

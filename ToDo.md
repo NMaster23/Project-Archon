@@ -54,7 +54,7 @@
   - `useEffect` has empty dependency array `[]`. Runs once on mount when user isn't logged in, never re-runs after login. WebSocket only works after a full page reload.
   - **Fix:** Add `token` to the dependency array
 
-- [ ] **#13 — Pages 1, 3, 4 are unclickable** (`App.tsx:413` + `Page1.tsx`, `Page3.tsx`, `Page4.tsx`)
+- [x] **#13 — Pages 1, 3, 4 are unclickable** (`App.tsx:413` + `Page1.tsx`, `Page3.tsx`, `Page4.tsx`)
   - Parent div has `pointer-events-none` but these pages don't add `pointer-events-auto`. Can't scroll, click, or select text.
   - **Fix:** Add `pointer-events-auto` class to those page root elements
 
@@ -62,11 +62,11 @@
   - Backend `update_server_config` returns empty body (`StatusCode::OK`), but frontend calls `response.json()` → throws `SyntaxError: Unexpected end of JSON input`.
   - **Fix:** Check `response.ok` instead of parsing JSON, or return JSON from the backend
 
-- [ ] **#15 — User prefs never saved/loaded correctly** (`Settings.tsx:90-110`)
+- [x] **#15 — User prefs never saved/loaded correctly** (`Settings.tsx:90-110`)
   - Settings page reads/writes everything to `/api/config` (ServerConfig only). User preferences like `backend`, `model`, `max_output_tokens` require `/api/user/prefs` which is never called.
   - **Fix:** Split config fetch/save to use both `/api/config` and `/api/user/prefs`
 
-- [ ] **#16 — Build breaks on clean install** (`alert.tsx:3`)
+- [x] **#16 — Build breaks on clean install** (`alert.tsx:3`)
   - Imports from `framer-motion` but the actual dependency is `motion`. Other files correctly import from `motion/react`.
   - **Fix:** Change import to `from "motion/react"`
 
@@ -81,22 +81,22 @@
   - Uses `ws://` hardcoded — browser blocks mixed content when accessed over HTTPS Cloudflare tunnel.
   - **Fix:** Use `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}`
 
-- [ ] **#19 — File type filter broken** (`Settings.tsx:286`)
+- [x] **#19 — File type filter broken** (`Settings.tsx:286`)
   - `accept="image//*"` has a double slash. Should be `image/*`.
 
 - [ ] **#20 — Peer client cards show local user data** (`Page4.tsx:36,42`)
   - Each connected client card renders `{username}` and `{email}` (local user) instead of the peer's actual metadata.
 
-- [ ] **#21 — Resource Usage page shows splash** (`App.tsx:63-66`)
+- [x] **#21 — Resource Usage page shows splash** (`App.tsx:63-66`)
   - Sidebar item "Resource Usage" sets `activeIndex = 4` but `renderContent()` has no `case 4:` → falls through to `default:` → renders unauthenticated splash page inside dashboard.
 
-- [ ] **#22 — Template literal renders as text** (`App.tsx:114`)
+- [x] **#22 — Template literal renders as text** (`App.tsx:114`)
   - `Server Error ${response.status}` inside JSX renders as the literal string `"${response.status}"` instead of the actual value.
 
-- [ ] **#23 — False auth warning on landing page** (`App.tsx:95-144`)
+- [x] **#23 — False auth warning on landing page** (`App.tsx:95-144`)
   - `fetchConfig` runs on mount with `[]` deps, fires "Authentication Required" warning before user has attempted to sign in.
 
-- [ ] **#24 — Sign up form validation deadlock** (`SignUp.tsx`)
+- [x] **#24 — Sign up form validation deadlock** (`SignUp.tsx`)
   - Submit button is disabled until validation passes, but validation only triggers on submit. Fields don't reset `isValid` to `false` when cleared.
 
 ---

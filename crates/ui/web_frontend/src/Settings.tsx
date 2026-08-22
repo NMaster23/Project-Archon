@@ -87,26 +87,33 @@ UI LAYOUT:
           Text Input: Allowed MCP Servers (comma-separated list)
 */
 
-interface Config {
+interface ServerConfig {
   ai_permissions: string[];
-  backend: string;
   dashboard_port: number;
   run_in_background: boolean;
+  cloudflare_token: string | null;
+  auto_start_plugins: boolean;
   start_on_boot: boolean;
   debug_logging: boolean;
   gemini_api_key: string;
-  model: string;
-  system_prompt_override: string;
-  max_output_tokens: number;
+  plugin_directory: string;
+  allowed_mcp_servers: string[];
+  custom_settings: Record<string, any>;
+}
+
+interface ClientConfig {
   stt_disabled_by_default: boolean;
   input_device: string;
   output_device: string;
   silence_threshold_rms: number;
   push_to_talk_key: string | null;
-  auto_start_plugins: boolean;
-  plugin_directory: string;
-  allowed_mcp_servers: string[];
-  custom_settings: Record<string, any>;
+}
+
+interface UserConfig {
+  backend: string;
+  model: string;
+  system_prompt_override: string;
+  max_output_tokens: number;
 }
 
 const rectangle = {
@@ -182,7 +189,9 @@ function ThemeColorPicker() {
 }
 
 export default function SettingsPage() {
-  const [config, setConfig] = useState<Config | null>(null);
+  const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null);
+  const [userConfig, setUserConfig] = useState<UserConfig | null>(null);
+  const [clientConfig, setClientConfig] = useState<ClientConfig | null>(null);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -209,57 +218,57 @@ export default function SettingsPage() {
       reader.readAsDataURL(file);
     }
   }
-  const changeHandler = (fieldName: string, newValue: any) => {
-    if (config) {
-      setConfig({ ...config, [fieldName]: newValue });
+  const changeHandler = (type: 'server' | 'user' | 'client', fieldName: string, newValue: any) => {
+    if (type === 'server' && serverConfig) {
+      setServerConfig({ ...serverConfig, [fieldName]: newValue });
+    } else if (type === 'user' && userConfig) {
+      setUserConfig({ ...userConfig, [fieldName]: newValue });
+    } else if (type === 'client' && clientConfig) {
+      setClientConfig({ ...clientConfig, [fieldName]: newValue });
     }
   };
 
-  const saveSettings = () => {
+  const saveSettings = async () => {
     setSaving(true);
     const currentHex = document.documentElement.style.getPropertyValue("--accent");
     const currentHsl = document.documentElement.style.getPropertyValue("--heroui-primary");
     if (currentHex) localStorage.setItem("user-theme-color", currentHex);
     if (currentHsl) localStorage.setItem("user-theme-hsl", currentHsl);
-    apiFetch("/api/config", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(config),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to save settings");
-        }
-        return response.json();
-      })
-      .then((data) => {
-        setConfig(data);
-        setSaving(false);
-      })
-      .catch((err) => {
-        console.error("Failed to save settings:", err);
-        setSaving(false);
-      });
+    try {
+      await Promise.all([
+        apiFetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(serverConfig),
+        }),
+        apiFetch("/api/user/prefs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(userConfig),
+        })
+      ]);
+      setSaving(false);
+    } catch (err) {
+      console.error("Failed to save settings: ", err);
+      setSaving(false);
+    }
   };
 
   useEffect(() => {
-    apiFetch("/api/config")
-      .then((response) => response.json())
-      .then((data) => {
-        setConfig(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load settings:", err);
-        setLoading(false);
-      });
+    Promise.all([
+      apiFetch("/api/config").then(res => res.json()),
+      apiFetch("/api/user/prefs").then(res => res.json())
+    ])
+    .then(([serverData, userData]) => {
+      setServerConfig(serverData);
+      setUserConfig(userData);
+      setLoading(false);
+    });
   }, []);
   if (loading) {
     return <div>Loading...</div>;
   }
-  if (!config) {
+  if (!userConfig) {
     return <div>Error loading settings.</div>;
   }
   return (
@@ -283,7 +292,7 @@ export default function SettingsPage() {
             )}
             <input
               type="file"
-              accept="image//*"
+              accept="image/*"
               ref={fileInput}
               className="hidden"
               onChange={imageChangeHandler}
@@ -313,8 +322,8 @@ export default function SettingsPage() {
       <div className="backdrop-blur-md flex-1 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10 rounded-xl">
         <Switch
           className="w-full"
-          isSelected={config?.run_in_background || false}
-          onChange={(value) => changeHandler("run_in_background", value)}
+          isSelected={serverConfig?.run_in_background || false}
+          onChange={(value) => changeHandler("server", "run_in_background", value)}
           size="lg"
         ><Switch.Content 
           className="w-full flex items-center">
@@ -325,8 +334,8 @@ export default function SettingsPage() {
           </Switch.Content>
         </Switch>
         <Switch
-          isSelected={config?.debug_logging || false}
-          onChange={(value) => changeHandler("debug_logging", value)}
+          isSelected={serverConfig?.debug_logging || false}
+          onChange={(value) => changeHandler("server", "debug_logging", value)}
           size="lg"
         ><Switch.Content>
             <Switch.Control>
@@ -336,8 +345,8 @@ export default function SettingsPage() {
           </Switch.Content>
         </Switch>
         <Switch
-          isSelected={config?.stt_disabled_by_default || false}
-          onChange={(value) => changeHandler("stt_disabled_by_default", value)}
+          isSelected={clientConfig?.stt_disabled_by_default || false}
+          onChange={(value) => changeHandler("client", "stt_disabled_by_default", value)}
           size="lg"
         ><Switch.Content>
             <Switch.Control>
@@ -347,8 +356,8 @@ export default function SettingsPage() {
           </Switch.Content>
         </Switch>
         <Switch
-          isSelected={config?.auto_start_plugins || false}
-          onChange={(value) => changeHandler("auto_start_plugins", value)}
+          isSelected={serverConfig?.auto_start_plugins || false}
+          onChange={(value) => changeHandler("server", "auto_start_plugins", value)}
           size="lg"
         ><Switch.Content>
             <Switch.Control>
@@ -375,8 +384,8 @@ export default function SettingsPage() {
             className="flex-1 min-h-0 mr-8 mb-4 w-full h-full"
           >
             <ConfigEditor
-            config={config}
-              onChange={(newConfig) => setConfig(newConfig)}
+            config={serverConfig}
+              onChange={(newConfig) => changeHandler("server", "run_in_background", newConfig)}
             />
           </motion.div>
       )}
