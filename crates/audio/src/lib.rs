@@ -130,18 +130,35 @@ pub async fn tts(text: &str, model: &dyn TtsModel) -> Result<(), Box<dyn std::er
     let config: cpal::StreamConfig = device.default_output_config().map_err(|e| e.to_string())?.into();
     let channels = config.channels as usize;
     let sample_rate = audio.sample_rate;
-    let mut resampler = FftFixedIn::<f32>::new(
-        config.sample_rate as usize / sample_rate as usize,
-        1.0,
-    )
     let mut current_idx = 0;
-    let audio_len = audio.len();
+    let target_rate = config.sample_rate.0;
+    let ratio = sample_rate as f64 / target_rate as f64;
+    let new_len = (audio.samples.len() as f64 / ratio) as usize;
+    
+    let mut resampled = Vec::with_capacity(new_len);
+    for i in 0..new_len {
+        let exact_idx = i as f64 * ratio;
+        let idx = exact_idx as usize;
+        let frac = (exact_idx - idx as f64) as f32;
+        
+        if idx + 1 < audio.samples.len() {
+            let s1 = audio.samples[idx];
+            let s2 = audio.samples[idx + 1];
+            resampled.push(s1 + (s2 - s1) * frac);
+        } else if idx < audio.samples.len() {
+            resampled.push(audio.samples[idx]);
+        } else {
+            resampled.push(0.0);
+        }
+    }
+    
+    let audio_len = resampled.len();
     let stream = device.build_output_stream(
         config,
         move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
             for frame in data.chunks_mut(channels) {
                 let sample_val = if current_idx < audio_len {
-                    let samples = audio.samples[current_idx];
+                    let samples = resampled[current_idx];
                     current_idx += 1;
                     samples
                 } else {

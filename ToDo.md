@@ -10,7 +10,7 @@
   - `agy_session = AgySession::new(...)` is created but never used (the lines that used it were deleted). It spawns a PTY running `agy` — crashes if `agy` isn't installed.
   - **Fix:** Delete line 328 (`let agy_session = AgySession::new(tx_in.clone())?;`)
 
-- [ ] **#3 — Gemini hangs after tool call** (`ai/src/lib.rs:338-370`)
+- [x] **#3 — Gemini hangs after tool call** (`ai/src/lib.rs:338-370`)
   - When a `ToolCallResult` arrives, the tool response is sent to Gemini, but `speech` is empty → hits `continue` at line 369 → loops back to `rx_out.recv()` without ever reading Gemini's response via `session.next_event()`.
   - **Fix:** After `session.send_tool_response()`, jump to the `while let Some(event) = session.next_event().await` loop instead of continuing
 
@@ -22,7 +22,7 @@
   - Path is `data_local_dir/models/moonshine-streaming-medium-onnx` — missing `Talos/` prefix.
   - **Fix:** Change to `.join("Talos").join("models").join("moonshine-streaming-medium-onnx")`
 
-- [ ] **#6 — TTS chipmunk audio** (`audio/src/lib.rs:121`)
+- [x] **#6 — TTS chipmunk audio** (`audio/src/lib.rs:121`)
   - Synthesized audio at ~24kHz is played at the device's native rate (44.1/48kHz) with no resampling. Audio plays at ~2x speed with high pitch.
   - **Fix:** Add resampling (e.g. with Rubato) from model sample rate to device sample rate
 
@@ -46,7 +46,7 @@
 
 ## 🔴 Frontend — Most Visible to Reviewers
 
-- [ ] **#11 — Sign up flow broken** (`SignUp.tsx:242-255`)
+- [x] **#11 — Sign up flow broken** (`SignUp.tsx:242-255`)
   - After 2FA verify succeeds, the response token is never stored in `authStore`. User enters dashboard unauthenticated — all protected API calls fail with 401.
   - **Fix:** Parse response body, call `addAccount()` with token and username
 

@@ -221,6 +221,7 @@ const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
 
       if (response.ok) {
         const data = await response.json();
+        useAuthStore.getState().removeAccount(email);
         addAccount({
           username,
           email,
