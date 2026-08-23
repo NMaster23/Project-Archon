@@ -115,9 +115,13 @@ impl ConfigFile for ClientConfig {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UserPreferences {
+    #[serde(default)]
     pub backend: String,
+    #[serde(default)]
     pub model: String,
+    #[serde(default)]
     pub system_prompt_override: String,
+    #[serde(default)]
     pub max_output_tokens: u32,
 }
 

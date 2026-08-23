@@ -10,14 +10,14 @@ use webrtc_vad::SampleRate::Rate16kHz;
 use webrtc_vad::VadMode::Quality;
 use webrtc_vad::*;
 use any_tts::{SynthesisRequest, TtsModel};
-use rubato::{Resampler, SincFixedIn, InterpolationType, InterpolationParameters, WindowFunction};
+use rubato::{Resampler, SincFixedIn, InterpolationType, InterpolationParameters, WindowFunction, FftFixedIn};
 
 pub fn stt(
     tx_out: tokio::sync::mpsc::UnboundedSender<TalosBus>,
     speaking: Arc<AtomicBool>,
     stt_disabled: Arc<AtomicBool>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let model_path = dirs::data_local_dir().expect("Directory error").join("models/moonshine-streaming-medium-onnx");
+    let model_path = dirs::data_local_dir().expect("Directory error").join("Talos").join("models").join("moonshine-streaming-medium-onnx");
     let mut model = StreamingModel::load(
         &PathBuf::from(model_path),
         4,
@@ -130,6 +130,10 @@ pub async fn tts(text: &str, model: &dyn TtsModel) -> Result<(), Box<dyn std::er
     let config: cpal::StreamConfig = device.default_output_config().map_err(|e| e.to_string())?.into();
     let channels = config.channels as usize;
     let sample_rate = audio.sample_rate;
+    let mut resampler = FftFixedIn::<f32>::new(
+        config.sample_rate as usize / sample_rate as usize,
+        1.0,
+    )
     let mut current_idx = 0;
     let audio_len = audio.len();
     let stream = device.build_output_stream(

@@ -429,6 +429,16 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
     let plugin_db = plugin_dir.join("plugins.db");
     let db = Builder::new_local(plugin_db.to_str().expect("Failed to convert db path to str")).build().await.expect("Failed to create/access plugin database");
     let conn = db.connect().expect("Failed to connect to database");
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS plugins (
+        plugin_id TEXT,
+        key TEXT,
+        value TEXT,
+        vector F32_BLOB(384),
+        PRIMARY KEY (plugin_id, key)
+        )",
+        (),
+    ).await.expect("Could not create plugin database");
     let state = AppState {
         start_time: Instant::now(),
         auth_state: talos_auth::AuthState::new(),
@@ -439,7 +449,6 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
     let config = state.config.clone();
     let cloudflare_token = config.read().expect("Cloudflare config error").cloudflare_token.clone();
     let private_router = Router::new()
-        .route("/api/talosbus", get(get_talosbus_ws))
         .route("/api/config", get(get_server_config).post(update_server_config))
         .route("/api/user/prefs", get(get_user_preferences).post(update_user_prefs))
         .route("/api/plugins/{plugin_id}/permissions", post(update_plugin_permissions))
@@ -448,6 +457,7 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
         .route_layer(axum::middleware::from_fn(talos_auth::axum_auth))
         .with_state(state.clone());
     let public_router = Router::new()
+        .route("/api/talosbus", get(get_talosbus_ws))
         .route("/api/status", get(get_server_status))
         .route("/api/2fa/signup", post(talos_auth::totp_setup_handler))
         .route("/api/2fa/verify", post(talos_auth::totp_verify_handler))

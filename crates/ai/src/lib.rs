@@ -326,8 +326,8 @@ pub async fn gemini_communicate_speech(
     player.append(stream_source);
     player.play();
     let mut audio_buffer: Vec<u8> = Vec::new();
-    let agy_session = AgySession::new(tx_in.clone())?;
     loop {
+        let mut sent_tool_response = false;
         let mut speech = String::new();
         match rx_out.recv().await {
             Some(TalosBus::VoiceTranscript(speech_input)) => {
@@ -346,6 +346,7 @@ pub async fn gemini_communicate_speech(
                 if let Err(e) = session.send_tool_response(vec![tool_response]).await {
                     eprintln!("{}", e);
                 }
+                sent_tool_response = true;
             }
             Some(_) => continue,
             None => break,
@@ -366,21 +367,23 @@ pub async fn gemini_communicate_speech(
                 Err(_) => break,
             }
         }
-        if speech.is_empty() {
+        if speech.is_empty() && !sent_tool_response {
             continue;
         }
-        if let Ok(memories) = retrieve_memories(&speech, 3).await {
-            if !memories.is_empty() {
-                let combined_memories = memories.join("\n- ");
-                speech = format!(
-                    "Relevant context from previous conversations:\n- {}\n\nUser Input: {}",
-                    combined_memories,
-                    speech.trim(),
-                )
-            }
-        };
-        session.send_text(&speech).await?;
-        let _ = tx_in.send(TalosBus::TerminalOutput(format!("You: {}", speech)));
+        if !speech.is_empty() {
+            if let Ok(memories) = retrieve_memories(&speech, 3).await {
+                if !memories.is_empty() {
+                    let combined_memories = memories.join("\n- ");
+                    speech = format!(
+                        "Relevant context from previous conversations:\n- {}\n\nUser Input: {}",
+                        combined_memories,
+                        speech.trim(),
+                    )
+                }
+            };
+            session.send_text(&speech).await?;
+            let _ = tx_in.send(TalosBus::TerminalOutput(format!("You: {}", speech)));
+        }
         let mut gemini_response = String::new();
         while let Some(event) = session.next_event().await {
             match event {
@@ -645,7 +648,7 @@ pub async fn save_chats(mut rx_out: UnboundedReceiver<TalosBus>) -> Result<(), B
             TalosBus::UserCredentials(_) => { return Ok(()); }
             TalosBus::Shutdown => { return Ok(()); }
             _ => {
-                return Err(Box::<dyn std::error::Error>::from("Unknown error"));
+                continue;
             }
         }
     }
