@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { v7 as uuidv7 } from 'uuid';
 import { Card } from "@heroui/react";
 import { StatusDot } from "./StatusDot";
-import { useAuthStore } from "./authStore";
 
 export interface Peer {
   id: string;
@@ -19,10 +18,6 @@ interface Presence {
 }
 
 export default function Page4({ websocket }: { websocket: WebSocket | null }) {
-  const accounts = useAuthStore((state) => state.accounts);
-  const email = useAuthStore((state) => state.activeEmail);
-  const acc = accounts.find((acc) => acc.email === email);
-  const username = acc?.username || "Dashboard User"
   const clients = clientPresenceDetection(websocket);
   return (
     <div style={{ color: 'white', padding: '2rem' }}>
@@ -33,13 +28,13 @@ export default function Page4({ websocket }: { websocket: WebSocket | null }) {
             <Card className="right-6">
           <Card.Header>
             <Card.Title className="flex flex-row items-center gap-2">
-              <StatusDot /> {username}
+              <StatusDot /> {client.name}
             </Card.Title>
           </Card.Header>
           <Card.Footer className="flex flex-col items-start">
             <div><strong>Last Online:</strong> {new Date(client.lastOnline).toLocaleString()}</div>
             <div><strong>Operating System:</strong> {client.clientOs}</div>
-            <div><strong>Email:</strong> {email}</div>
+            <div><strong>Identification:</strong> {client.id}</div>
           </Card.Footer>
         </Card>
           </li>

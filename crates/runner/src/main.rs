@@ -63,9 +63,10 @@ pub async fn start_server() -> anyhow::Result<()> {
             }
             let (tx_in, mut rx_in) = mpsc::unbounded_channel::<TalosBus>();
             let (tx_out, rx_out) = mpsc::unbounded_channel::<TalosBus>();
+            let (tx_out_clone, rx_out_clone) = mpsc::unbounded_channel::<TalosBus>();
             let tx_in_clone = tx_in.clone();
             tokio::spawn(async move {
-                let _ = save_chats(rx_out).await;
+                let _ = save_chats(rx_out_clone).await;
             });
             let email_unwrapped = match email.clone() {
                 Some(e) => e,

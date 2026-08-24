@@ -131,7 +131,7 @@ pub async fn tts(text: &str, model: &dyn TtsModel) -> Result<(), Box<dyn std::er
     let channels = config.channels as usize;
     let sample_rate = audio.sample_rate;
     let mut current_idx = 0;
-    let target_rate = config.sample_rate.0;
+    let target_rate = config.sample_rate;
     let ratio = sample_rate as f64 / target_rate as f64;
     let new_len = (audio.samples.len() as f64 / ratio) as usize;
     

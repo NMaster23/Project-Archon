@@ -13,7 +13,6 @@ import { Gear } from '@gravity-ui/icons';
 import { AnimatePresence } from "motion/react";
 import { alertTrigger, GlobalAlert } from "./alert";
 import { StatusDot } from "./StatusDot";
-import {ChartColumn} from '@gravity-ui/icons';
 
 import Page1 from "./Page1";
 import Page2 from "./Page2";
@@ -70,6 +69,7 @@ function SideBar({ activeIndex, setActiveIndex }: { activeIndex: number | null, 
 
 export default function App() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const token = useAuthStore((state) => state.getActiveToken());
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const isLoggedIn =
     activeIndex !== null && activeIndex >= 0 && activeIndex <= 11;
@@ -90,13 +90,8 @@ export default function App() {
   }, []);
   useEffect(() => {
     const fetchConfig = async () => {
-      const token = useAuthStore.getState().getActiveToken();
       if (!token) {
-        alertTrigger.warning(
-          "Authentication Required",
-          "No active session found. Please sign in to load configuration."
-        );
-        return
+        return;
       }
       try {
         const response = await apiFetch("/api/config", { method: "GET" });
@@ -236,7 +231,7 @@ export default function App() {
       setWebsocket(null);
       socket.close();
     };
-  }, []);
+  }, [token]);
 
   const renderContent = () => {
     switch (activeIndex) {

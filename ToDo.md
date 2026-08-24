@@ -50,7 +50,7 @@
   - After 2FA verify succeeds, the response token is never stored in `authStore`. User enters dashboard unauthenticated — all protected API calls fail with 401.
   - **Fix:** Parse response body, call `addAccount()` with token and username
 
-- [ ] **#12 — WebSocket never connects after login** (`App.tsx:170-239`)
+- [x] **#12 — WebSocket never connects after login** (`App.tsx:170-239`)
   - `useEffect` has empty dependency array `[]`. Runs once on mount when user isn't logged in, never re-runs after login. WebSocket only works after a full page reload.
   - **Fix:** Add `token` to the dependency array
 
@@ -84,7 +84,7 @@
 - [x] **#19 — File type filter broken** (`Settings.tsx:295`)
   - `accept="image//*"` has a double slash. Should be `image/*`.
 
-- [ ] **#20 — Peer client cards show local user data** (`Page4.tsx:36,42`)
+- [x] **#20 — Peer client cards show local user data** (`Page4.tsx:36,42`)
   - Each connected client card renders `{username}` and `{email}` (local user) instead of the peer's actual metadata.
 
 - [x] **#21 — Resource Usage page shows splash** (`App.tsx:63-66`)
@@ -93,7 +93,7 @@
 - [x] **#22 — Template literal renders as text** (`App.tsx:110`)
   - `Server Error ${response.status}` inside JSX renders as the literal string `"${response.status}"` instead of the actual value.
 
-- [ ] **#23 — False auth warning on landing page** (`App.tsx:92-100`)
+- [x] **#23 — False auth warning on landing page** (`App.tsx:92-100`)
   - `fetchConfig` runs on mount with `[]` deps, fires "Authentication Required" warning before user has attempted to sign in.
 
 - [x] **#24 — Sign up form validation deadlock** (`SignUp.tsx`)

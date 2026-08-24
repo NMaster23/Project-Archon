@@ -248,6 +248,14 @@ const SignUp: React.FC<SignUpProps> = ({ setActiveIndex }) => {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        useAuthStore.getState().removeAccount(email);
+        addAccount({
+          username: data.username,
+          email,
+          secret: data.secret,
+          sessionToken: data.token,
+        });
         setActiveIndex(0);
       } else {
         alertTrigger.danger("Login Failed. Please try again.", "")

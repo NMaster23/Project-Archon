@@ -4,6 +4,7 @@ import { alertTrigger } from "./alert";
 import { AnimatePresence, motion } from "motion/react";
 import { CloseButton } from "@heroui/react";
 import {ArrowDownToSquare} from '@gravity-ui/icons';
+import { useAuthStore } from "./authStore";
 
 export default function Page2() {
   const fileInput = useRef<HTMLInputElement>(null);
@@ -28,8 +29,12 @@ export default function Page2() {
     const form = new FormData();
     form.append("plugin_binary", file);
     try {
+      const token = useAuthStore.getState().getActiveToken();
       const res = await fetch('/api/plugins/install', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: form,
       });
 
