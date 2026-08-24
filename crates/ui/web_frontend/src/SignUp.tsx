@@ -75,6 +75,7 @@ function SignUpForm({
         onChange={setEmail}
         validate={(value) => {
           if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value)) {
+            setValidEmailInput(false);
             return "Please enter a valid email address";
           }
           setValidEmailInput(true);
@@ -96,6 +97,7 @@ function SignUpForm({
         onChange={setPassword}
         validate={(value) => {
           if (value.length < 8) {
+            setValidPasswordInput(false);
             return "Password must be at least 8 characters long";
           }
           setValidPasswordInput(true);

@@ -62,11 +62,18 @@ pub async fn start_server() -> anyhow::Result<()> {
                 return;
             }
             let (tx_in, mut rx_in) = mpsc::unbounded_channel::<TalosBus>();
-            let (tx_out, rx_out) = mpsc::unbounded_channel::<TalosBus>();
-            let (tx_out_clone, rx_out_clone) = mpsc::unbounded_channel::<TalosBus>();
+            let (tx_out, mut rx_out) = mpsc::unbounded_channel::<TalosBus>();
+            let (tx_ai, rx_ai) = mpsc::unbounded_channel::<TalosBus>();
+            let (tx_chat, rx_chat) = mpsc::unbounded_channel::<TalosBus>();
             let tx_in_clone = tx_in.clone();
             tokio::spawn(async move {
-                let _ = save_chats(rx_out_clone).await;
+                while let Some(msg) = rx_out.recv().await {
+                    tx_ai.send(msg.clone()).expect("Send error");
+                    tx_chat.send(msg.clone()).expect("Send error");
+                }
+            });
+            tokio::spawn(async move {
+                let _ = save_chats(rx_chat).await;
             });
             let email_unwrapped = match email.clone() {
                 Some(e) => e,
@@ -90,7 +97,7 @@ pub async fn start_server() -> anyhow::Result<()> {
                 if let Some(auth_data) = opt_auth_data {
                     let api_key = auth_data.data;
                     tokio::spawn(async move {
-                        gemini_api(&api_key, rx_out, tx_in_clone, token_budget).await;
+                        gemini_api(&api_key, rx_ai, tx_in_clone, token_budget).await.expect("Gemini API Communication Error");
                     });
                 } else {
                     eprintln!("Authentication data missing");
@@ -99,14 +106,14 @@ pub async fn start_server() -> anyhow::Result<()> {
             } else if user_prefs.backend == "AGY" {
                 let tx_in_clone = tx_in.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = talos_ai::agy_backend(rx_out, tx_in_clone).await {
+                    if let Err(e) = talos_ai::agy_backend(rx_ai, tx_in_clone).await {
                         eprintln!("AGY CLI Error: {:?}", e);
                     }
                 });
             } else if user_prefs.backend == "LOCAL" {
                 let tx_in_clone = tx_in.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = talos_ai::local_backend(rx_out, tx_in_clone).await {
+                    if let Err(e) = talos_ai::local_backend(rx_ai, tx_in_clone).await {
                         eprintln!("Local Backend Error: {:?}", e);
                     }
                 });
