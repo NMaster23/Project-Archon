@@ -61,9 +61,9 @@ pub const CONFIG_TEMPLATE: &str = r#"{
 
   "backend": "AGY",
   "dashboard_port": 3000,
+  "server_port": 8080,
   "run_in_background": false,
   "start_on_boot": false,
-  "debug_logging": false,
 
   "gemini_api_key": "",
   "model": "models/gemini-3.1-flash-live-preview",
@@ -89,10 +89,10 @@ pub const CONFIG_TEMPLATE: &str = r#"{
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ServerConfig {
     pub dashboard_port: u16,
+    pub server_port: u16,
     pub cloudflare_token: Option<String>,
     pub run_in_background: bool,
     pub start_on_boot: bool,
-    pub debug_logging: bool,
     pub plugin_directory: String,
     pub allowed_mcp_servers: Vec<String>,
     pub auto_start_plugins: bool,

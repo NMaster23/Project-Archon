@@ -167,6 +167,7 @@ pub struct AgySession {
 impl AgySession {
     pub fn new(
         talos_bus_tx: UnboundedSender<TalosBus>,
+        model: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
@@ -175,7 +176,11 @@ impl AgySession {
             pixel_width: 0,
             pixel_height: 0,
         })?;
-        let mut child = pair.slave.spawn_command(CommandBuilder::new("agy"))?;
+        let mut cmd = CommandBuilder::new("agy");
+        if !model.is_empty() {
+            cmd.args(&["--model", model]);
+        }
+        let mut child = pair.slave.spawn_command(cmd)?;
         let mut writer = pair.master.take_writer()?;
         let mut reader = pair.master.try_clone_reader()?;
 
@@ -428,6 +433,7 @@ pub async fn gemini_api(
     rx_out: UnboundedReceiver<TalosBus>,
     tx_in: UnboundedSender<TalosBus>,
     token_budget: u32,
+    sys_prompt: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let raw_ai_management_prompt = r#"You are Talos, an advanced, voice-operated Developer Assistant. You have direct, real-time access to the user's host operating system and terminal through an AGY CLI bridge.
 
@@ -442,7 +448,12 @@ Operational Directives & Safety Rules
     Destructive Actions: If a user asks you to delete files, format drives, or run potentially dangerous commands, ask for confirmation before issuing the AGY instruction."#;
     let skills = load_skills().await;
     let soul = load_soul().await;
-    let ai_management_prompt = format!("{}\n\nLearned Facts & Persona:\n{}\n\nSkills & Past Mistakes:\n{}", raw_ai_management_prompt, soul, skills);
+    let base = if sys_prompt.is_empty() {
+        raw_ai_management_prompt.to_string()
+    } else {
+        sys_prompt.to_string()
+    };
+    let ai_management_prompt = format!("{}\n\nLearned Facts & Persona:\n{}\n\nSkills & Past Mistakes:\n{}", base, soul, skills);
     let executor_tools = executor::gemini_api_mcp().await;
     let gemini_tools = vec![gemini_live::Tool::FunctionDeclarations(
         executor_tools.into_iter().filter_map(|raw| {
@@ -544,29 +555,31 @@ pub async fn agy_communicate(
     Ok(())
 }
 
-pub async fn agy_backend(mut rx_out: UnboundedReceiver<TalosBus>, tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>) -> Result<(), Box<dyn std::error::Error>> {
-    let agy_session = AgySession::new(tx_in.clone())?;
+pub async fn agy_backend(mut rx_out: UnboundedReceiver<TalosBus>, tx_in: tokio::sync::mpsc::UnboundedSender<TalosBus>, model: &str, sys_prompt: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let agy_session = AgySession::new(tx_in.clone(), model)?;
+    let mut is_first = true;
     while let Some(event) = rx_out.recv().await {
-        match event {
-            TalosBus::VoiceTranscript(speech) => {
-                let mut prompt = speech.trim().to_string();
-                if prompt.is_empty() {
-                    continue;
-                }
-                if let Ok(memories) = retrieve_memories(&prompt, 3).await {
-                    if !memories.is_empty() {
-                        let combined_memories = memories.join("\n- ");
-                        prompt = format!(
-                            "Relevant context from previous conversations:\n- {}\n\nUser Input: {}",
-                            combined_memories,
-                            speech.trim(),
-                        )
-                    }
-                }
-                tx_in.send(TalosBus::TerminalOutput(format!("You: {}", prompt))).ok();
-                agy_session.execute(&prompt);
+        if let TalosBus::VoiceTranscript(speech) = event {
+            let mut prompt = speech.trim().to_string();
+            if prompt.is_empty() {
+                continue;
             }
-            _ => {}
+            if let Ok(memories) = retrieve_memories(&prompt, 3).await {
+                if !memories.is_empty() {
+                    let combined_memories = memories.join("\n- ");
+                    prompt = format!(
+                        "Relevant context from previous conversations:\n- {}\n\nUser Input: {}",
+                        combined_memories,
+                        prompt,
+                    )
+                }
+            }
+            if is_first && !sys_prompt.is_empty() {
+                prompt = format!("System Instructions for this session:\n{}\n\n{}", sys_prompt, prompt);
+                is_first = false;
+            }
+            tx_in.send(TalosBus::TerminalOutput(format!("You: {}", prompt))).ok();
+            agy_session.execute(&prompt);
         }
     }
     Ok(())

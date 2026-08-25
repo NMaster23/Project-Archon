@@ -10,23 +10,60 @@ use std::time::Duration;
 use talos_core::TalosBus::UserCredentials;
 use any_tts::{load_model, ModelType, SynthesisRequest, TtsConfig, TtsModel};
 use talos_ui::get_user_preferences;
+use auto_launch::*;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "Talos",
     author: "NMCreator",
 };
 
-pub async fn cron_scheduler() {
-    
+#[cfg(target_os = "windows")]
+fn hide_console() {
+    unsafe {
+        let window = winapi::um::wincon::GetConsoleWindow();
+        if !window.is_null() {
+            winapi::um::winuser::ShowWindow(window, winapi::um::winuser::SW_HIDE);
+        }
+    }
 }
 
 pub async fn start_server() -> anyhow::Result<()> {
     let server_config_path = get_app_root(AppDataType::UserConfig, &APP_INFO)?.join("server_config.json");
     let server_config = talos_core::ServerConfig::load(&server_config_path, talos_core::CONFIG_TEMPLATE);
     let config = Arc::new(RwLock::new(server_config));
-    let listener = talos_transport::listen("0.0.0.0:9090").await?;
-    println!("Server is listening on port 9090");
+    let server_port = config.read().expect("Error reading config").server_port;
+    let listener_argument = format!("0.0.0.0:{}", server_port);
+    let listener = talos_transport::listen(&listener_argument).await?;
+    if config.read().expect("Error reading config").run_in_background {
+        hide_console();
+        hide_console();
+    }
+    let current_app = std::env::current_exe()?;
+    let auto = AutoLaunchBuilder::new()
+        .set_app_name("Talos")
+        .set_app_path(current_app.to_str().expect("Failed path to string"))
+        .set_args(&["server"])
+        .set_macos_launch_mode(MacOSLaunchMode::LaunchAgent)
+        .build()?;
+    if !auto.is_enabled()? && config.read().expect("Error reading config").start_on_boot {
+        auto.enable()?;
+    } else if auto.is_enabled()? && !config.read().expect("Error reading config").start_on_boot {
+        auto.disable()?;
+    }
+    println!("Server is listening on port {}", server_port);
     let (bus_tx, _) = tokio::sync::broadcast::channel::<talos_core::SystemEvent>(100);
+    if config.read().expect("Error reading config").auto_start_plugins {
+        let plugin_dir_str = config.read().expect("Error reading config").plugin_directory.clone();
+        let plugin_dir = std::path::PathBuf::from(plugin_dir_str);
+        let (plugin_tx, mut plugin_rx) = tokio::sync::mpsc::unbounded_channel::<talos_core::TalosBus>();
+        tokio::spawn(async move {
+            match talos_plugins::plugins(plugin_tx, &plugin_dir).await {
+                Ok(loaded) => println!("Loaded {} plugins from {}", loaded.len(), plugin_dir.to_str().expect("Failed path to string")),
+                Err(e) => eprintln!("Error loading plugins: {}", e),
+            }
+            while let Some(_) = plugin_rx.recv().await {}
+        });
+    }
     
     let bus_tx_ui = bus_tx.clone();
     tokio::spawn(async move {
@@ -92,12 +129,13 @@ pub async fn start_server() -> anyhow::Result<()> {
             let prefs_path = config_dir.join(format!("{}_prefs.json", email_unwrapped));
             let user_prefs = UserPreferences::load(&prefs_path, "{}");
             let token_budget = user_prefs.max_output_tokens;
+            let sys_prompt = user_prefs.system_prompt_override.clone();
             if user_prefs.backend == "API" {
                 let opt_auth_data = get_auth(email.as_deref(), 2).await;
                 if let Some(auth_data) = opt_auth_data {
                     let api_key = auth_data.data;
                     tokio::spawn(async move {
-                        gemini_api(&api_key, rx_ai, tx_in_clone, token_budget).await.expect("Gemini API Communication Error");
+                        gemini_api(&api_key, rx_ai, tx_in_clone, token_budget, &sys_prompt).await.expect("Gemini API Communication Error");
                     });
                 } else {
                     eprintln!("Authentication data missing");
@@ -105,8 +143,9 @@ pub async fn start_server() -> anyhow::Result<()> {
                 }
             } else if user_prefs.backend == "AGY" {
                 let tx_in_clone = tx_in.clone();
+                let agy_model = user_prefs.model.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = talos_ai::agy_backend(rx_ai, tx_in_clone).await {
+                    if let Err(e) = talos_ai::agy_backend(rx_ai, tx_in_clone, &agy_model, &sys_prompt).await {
                         eprintln!("AGY CLI Error: {:?}", e);
                     }
                 });

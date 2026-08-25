@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use wasmtime::{Config, Engine, Store, Result};
 use wasmtime::component::{bindgen, Component, ResourceTable};
@@ -150,9 +151,13 @@ impl ArchonExtensionImports for PluginState {
     }
 }
 
-pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::TalosBus>) -> Result<Vec<(String, ArchonExtension, Store<PluginState>)>> {
+pub async fn plugins(sender: tokio::sync::mpsc::UnboundedSender<talos_core::TalosBus>, custom_dir: &PathBuf) -> Result<Vec<(String, ArchonExtension, Store<PluginState>)>> {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO)?;
-    let plugin_dir = app_root.join("Plugins");
+    let plugin_dir = if custom_dir.exists() {
+        custom_dir.clone()
+    } else {
+        app_root.join("Plugins")
+    };
     tokio::fs::create_dir_all(&plugin_dir).await?;
     let plugin_db = plugin_dir.join("plugins.db");
     let db = Builder::new_local(plugin_db.to_str().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "Plugin to string error"))?).build().await?;

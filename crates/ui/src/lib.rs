@@ -469,8 +469,9 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
         .merge(public_router)
         .fallback(static_handler)
         .with_state(state);
+    let dashboard_port = config.read().expect("Error reading config").dashboard_port;
     tokio::spawn(async move {
-        match spawn_cloudflare(8080, cloudflare_token).await {
+        match spawn_cloudflare(dashboard_port, cloudflare_token).await {
             Ok(url) => {
                 println!("Dashboard online at: {}", url);
             }
@@ -479,7 +480,7 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
             }
         }
     });
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 8080)).await.expect("Failed to bind");
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", dashboard_port)).await.expect("Failed to bind");
     println!("Listening on {}", listener.local_addr().expect("Could not get local address"));
     axum::serve(listener, app).await.expect("Error starting server dashboard");
 }
