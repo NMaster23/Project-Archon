@@ -7,6 +7,7 @@ import {
   ColorSlider,
   ColorSwatch,
   Label,
+  NumberField,
 } from "@heroui/react";
 import { Switch } from '@heroui/react';
 import { Card } from "@heroui/react";
@@ -94,8 +95,7 @@ interface ServerConfig {
   cloudflare_token: string | null;
   auto_start_plugins: boolean;
   start_on_boot: boolean;
-  debug_logging: boolean;
-  gemini_api_key: string;
+  server_port: number;
   plugin_directory: string;
   allowed_mcp_servers: string[];
   custom_settings: Record<string, any>;
@@ -334,17 +334,6 @@ export default function SettingsPage() {
           </Switch.Content>
         </Switch>
         <Switch
-          isSelected={serverConfig?.debug_logging || false}
-          onChange={(value) => changeHandler("server", "debug_logging", value)}
-          size="lg"
-        ><Switch.Content>
-            <Switch.Control>
-              <Switch.Thumb />
-            </Switch.Control>
-            Debug Logging
-          </Switch.Content>
-        </Switch>
-        <Switch
           isSelected={clientConfig?.stt_disabled_by_default || false}
           onChange={(value) => changeHandler("client", "stt_disabled_by_default", value)}
           size="lg"
@@ -370,6 +359,22 @@ export default function SettingsPage() {
           {saving ? "Saving..." : "Save Settings"}
         </InteractiveButton>
       </div>
+      <NumberField value={serverConfig?.server_port || 9090}>
+        <Label>Server Port</Label>
+        <NumberField.Group>
+          <NumberField.DecrementButton />
+          <NumberField.Input />
+          <NumberField.IncrementButton />
+        </NumberField.Group>
+      </NumberField>
+      <NumberField value={serverConfig?.dashboard_port || 3000}>
+        <Label>Dashboard Port</Label>
+        <NumberField.Group>
+          <NumberField.DecrementButton />
+          <NumberField.Input />
+          <NumberField.IncrementButton />
+        </NumberField.Group>
+      </NumberField>
       <AnimatePresence>
         {isEditorVisible && (
           <motion.div

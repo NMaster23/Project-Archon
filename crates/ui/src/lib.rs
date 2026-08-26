@@ -44,7 +44,7 @@ pub struct PermissionPayload {
 }
 
 #[derive(RustEmbed)]
-#[folder = "web_frontend/dist/"]
+#[folder = "web_frontend/dist"]
 struct Assets;
 
 #[derive(Clone)]
@@ -281,11 +281,17 @@ pub async fn install_cloudflare() {
         ],
     );
 
-    let status = Command::new(shell)
+    let status = match Command::new(shell)
         .args(args)
         .status()
         .await
-        .expect("Failed to start cloudflared installer");
+    {
+        Ok(status) => status,
+        Err(e) => {
+            eprintln!("Failed to start cloudflare installer: {}", e);
+            std::process::exit(1);
+        }
+    };
     if status.success() {
         println!("Installed cloudflared successfully");
     } else {

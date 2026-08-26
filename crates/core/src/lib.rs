@@ -65,7 +65,6 @@ pub const CONFIG_TEMPLATE: &str = r#"{
   "run_in_background": false,
   "start_on_boot": false,
 
-  "gemini_api_key": "",
   "model": "models/gemini-3.1-flash-live-preview",
   "system_prompt_override": "",
   "max_output_tokens": 8192,
@@ -86,7 +85,8 @@ pub const CONFIG_TEMPLATE: &str = r#"{
   "example_plugin_theme": "dark"
 }"#;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ServerConfig {
     pub dashboard_port: u16,
     pub server_port: u16,
@@ -97,7 +97,22 @@ pub struct ServerConfig {
     pub allowed_mcp_servers: Vec<String>,
     pub auto_start_plugins: bool,
     pub ai_permissions: Vec<String>,
-    pub gemini_api_key: String,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            dashboard_port: 3000,
+            server_port: 9090,
+            cloudflare_token: None,
+            run_in_background: false,
+            start_on_boot: false,
+            plugin_directory: "./plugins".to_string(),
+            allowed_mcp_servers: vec!["*".to_string()],
+            auto_start_plugins: true,
+            ai_permissions: vec![],
+        }
+    }
 }
 
 impl ConfigFile for ServerConfig {}

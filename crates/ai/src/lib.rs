@@ -734,7 +734,7 @@ pub async fn manage_memory() -> Result<(), Box<dyn std::error::Error>> {
     let (facts, _state, _entities, clean_summary) = memory_parser(&summary).await;
     let docs = vec![clean_summary.clone()];
     let embeddings = embed_model.embed(docs, None)?;
-    let memory_vector = format!("{:?}", &embeddings[0]);
+    let memory_vector = format!("{:?}", &embeddings.first().ok_or("No embedding")?);
     if !facts.is_empty() {
         conn.execute(
             "INSERT OR IGNORE INTO profile (fact) VALUES (?1)",
@@ -769,7 +769,7 @@ pub async fn manage_memory() -> Result<(), Box<dyn std::error::Error>> {
             let (facts, _state, _entities, clean_summary) = memory_parser(&new_summary).await;
             let docs = vec![clean_summary.clone()];
             let embeddings = embed_model.embed(docs, None)?;
-            let memory_vector = format!("{:?}", &embeddings[0]);
+            let memory_vector = format!("{:?}", &embeddings.first().ok_or("No embedding")?);
             if !facts.is_empty() {
                 conn.execute(
                     "INSERT OR IGNORE INTO profile (fact) VALUES (?1)",
@@ -880,7 +880,7 @@ pub async fn retrieve_memories(query: &str, limit: u32) -> Result<Vec<String>, B
     let conn = get_db_conn().await?;
     let mut embed_model = TextEmbedding::try_new(TextInitOptions::new(EmbeddingModel::AllMiniLML6V2))?;
     let embeddings = embed_model.embed(vec![query], None)?;
-    let query_vector = format!("{:?}", &embeddings[0]);
+    let query_vector = format!("{:?}", &embeddings.first().ok_or("No embedding")?);
     let mut rows = conn.query("SELECT content FROM memories ORDER BY vector_distance_cos(vector, vector32(?1)) LIMIT ?2", (query_vector, limit)).await?;
     let mut relevant_memories = Vec::new();
     while let Some(row) = rows.next().await? {
@@ -904,14 +904,16 @@ pub async fn react_loop(tx_in: UnboundedSender<TalosBus>, mut rx_out: &mut Unbou
         if let Some(action_start) = output.find("Action: ") {
             let json_str = &output[action_start + 8..];
             let json: serde_json::Value = serde_json::from_str(&json_str)?;
-            let action = json["action"].as_str().expect("Json parsing error ReAct");
+            let action = json["action"].as_str().ok_or("Action missing or not a string")?;
             let args = json["args"].to_string();
             let call_id = format!("call_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis() as u32);
-            tx_in.send(TalosBus::ActionIntent {
+            if let Err(e) = tx_in.send(TalosBus::ActionIntent {
                 call_id: call_id.clone(),
                 tool: action.to_string(),
                 args: args.to_string(),
-            }).expect("Channel unexpectedly closed");
+            }) {
+                eprintln!("Error sending TalosBus::ActionIntent {:?}", e);
+            };
             while let Some(msg) = rx_out.recv().await {
                 if let TalosBus::ToolCallResult { call_id: response_id, result, .. } = msg {
                     if response_id == call_id {

@@ -16,4 +16,4 @@ rdev = { version = "0.5.3", features = ["unstable_grab"] }
 notify-rust = "4.18.0"
 app_dirs2 = "2.5.5"
 tower-http = { version = "0.7.0", features = ["fs"] }
-turso = "0.8.0-pre.2"
+turso = "0.7.1"

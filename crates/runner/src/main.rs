@@ -135,7 +135,9 @@ pub async fn start_server() -> anyhow::Result<()> {
                 if let Some(auth_data) = opt_auth_data {
                     let api_key = auth_data.data;
                     tokio::spawn(async move {
-                        gemini_api(&api_key, rx_ai, tx_in_clone, token_budget, &sys_prompt).await.expect("Gemini API Communication Error");
+                        if let Err(e) = gemini_api(&api_key, rx_ai, tx_in_clone, token_budget, &sys_prompt).await {
+                            eprintln!("Error: {}", e);
+                        };
                     });
                 } else {
                     eprintln!("Authentication data missing");

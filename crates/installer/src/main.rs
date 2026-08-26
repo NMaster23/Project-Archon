@@ -23,7 +23,12 @@ fn main() {
 }
 
 pub fn setup() {
-    let dir = dirs::data_local_dir().expect("Could not get local dir").join("Talos").join("Models");
+    let mut dir = match dirs::data_local_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("Error getting local directory: {}", e);
+        }
+    }.join("Talos").join("Models");
     fs::create_dir_all(&dir).expect("Could not create Models directory");
     let mut files_zip = reqwest::blocking::get("https://github.com/NMaster23/Project-Archon/releases/download/Non-User/models.zip").expect("Could not download models");
     let zip_path = &dir.join("Non-User.zip");

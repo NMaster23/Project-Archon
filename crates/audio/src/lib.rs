@@ -81,6 +81,9 @@ pub fn stt(
             let chunk: Vec<f32> = audio.drain(..chunk_size).collect();
             let waves_in = vec![chunk];
             let mut waves_out = resampler.process(&waves_in, None)?;
+            if waves_out.is_empty() {
+                continue;
+            }
             let chunk_16k = waves_out.remove(0);
             vad_buffer.extend(chunk_16k);
             while vad_buffer.len() >= 480 {
@@ -126,7 +129,10 @@ pub async fn tts(text: &str, model: &dyn TtsModel) -> Result<(), Box<dyn std::er
             .with_instruct("Calm, clear, slightly upbeat."),
     )?;
     let host = cpal::default_host();
-    let device = host.default_output_device().expect("no output device available");
+    let device = match host.default_output_device() {
+        Some(d) => d,
+        None => return Ok(()),
+    };
     let config: cpal::StreamConfig = device.default_output_config().map_err(|e| e.to_string())?.into();
     let channels = config.channels as usize;
     let sample_rate = audio.sample_rate;
