@@ -159,8 +159,14 @@ pub async fn start_server() -> anyhow::Result<()> {
                     }
                 });
             }
+            let mut bus_rx = bus_tx_conn.subscribe();
             loop {
                 tokio::select! {
+                    Ok(bus_msg) = bus_rx.recv() => {
+                        if let talos_core::SystemEvent::BusEvent(talos_core::TalosBus::VoiceTranscript(text)) = bus_msg {
+                            let _ = tx_out.send(talos_core::TalosBus::VoiceTranscript(text));
+                        }
+                    }
                     Ok(message) = conn.recv_from_client() => {
                         let _ = bus_tx_conn.send(talos_core::SystemEvent::ClientEvent(message.clone()));
                         match message {

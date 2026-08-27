@@ -355,26 +355,26 @@ export default function SettingsPage() {
             Auto Start Plugins with System
           </Switch.Content>
         </Switch>
+        <NumberField defaultValue={serverConfig?.server_port || 9090}>
+          <Label>Server Port</Label>
+          <NumberField.Group>
+            <NumberField.DecrementButton />
+            <NumberField.Input />
+            <NumberField.IncrementButton />
+          </NumberField.Group>
+        </NumberField>
+        <NumberField defaultValue={serverConfig?.dashboard_port || 3030}>
+          <Label>Dashboard Port</Label>
+          <NumberField.Group>
+            <NumberField.DecrementButton />
+            <NumberField.Input />
+            <NumberField.IncrementButton />
+          </NumberField.Group>
+        </NumberField>
         <InteractiveButton onClick={saveSettings} disabled={saving}>
           {saving ? "Saving..." : "Save Settings"}
         </InteractiveButton>
       </div>
-      <NumberField value={serverConfig?.server_port || 9090}>
-        <Label>Server Port</Label>
-        <NumberField.Group>
-          <NumberField.DecrementButton />
-          <NumberField.Input />
-          <NumberField.IncrementButton />
-        </NumberField.Group>
-      </NumberField>
-      <NumberField value={serverConfig?.dashboard_port || 3000}>
-        <Label>Dashboard Port</Label>
-        <NumberField.Group>
-          <NumberField.DecrementButton />
-          <NumberField.Input />
-          <NumberField.IncrementButton />
-        </NumberField.Group>
-      </NumberField>
       <AnimatePresence>
         {isEditorVisible && (
           <motion.div

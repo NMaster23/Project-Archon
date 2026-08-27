@@ -1,11 +1,23 @@
+import { CloseButton, TextArea } from "@heroui/react";
+import { PaperPlane } from '@gravity-ui/icons';
+import { useState } from "react";
+
 interface Page3Props {
   chatHistory: string[];
+  websocket: WebSocket | null;
 }
 
-export default function Page3({ chatHistory }: Page3Props) {
+export default function Page3({ chatHistory, websocket}: Page3Props) {
+  const [message, setMessage] = useState("");
+  const send = () => {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      websocket.send(message);
+      setMessage("")
+    }
+  }
   return (
     <div className="text-white p-8 h-full flex flex-col w-full mx-auto">
-      <h1 className="text-4xl font-bold mb-8 bg-gradient-to-r from-[#00f2fe] to-[#4facfe] bg-clip-text text-transparent">Talos AI Core</h1>
+      <h1 className="text-4xl font-bold mb-8 bg-linear-to-r from-[#00f2fe] to-[#4facfe] bg-clip-text text-transparent">Talos AI Core</h1>
       
       <div className="flex-1 bg-white/5 backdrop-blur-md rounded-2xl p-6 border border-white/10 overflow-y-auto font-mono text-sm shadow-2xl flex flex-col gap-2">
         {chatHistory.length === 0 ? (
@@ -17,6 +29,20 @@ export default function Page3({ chatHistory }: Page3Props) {
             </div>
           ))
         )}
+      </div>
+      <div className="flex-1 bg-white/5 backdrop-blur-md rounded-2xl p-6 border border-white/10 overflow-y-auto font-mono text-sm shadow-2xl flex flex-col gap-2">
+        <TextArea
+          className="h-full w-full"
+          placeholder="Send to Talos"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+        />
+        <CloseButton
+          className="text-white hover:bg-default-hover hover:text-foreground active:scale-95"
+          onPress={send}
+        >
+          <PaperPlane />
+        </CloseButton>
       </div>
     </div>
   );

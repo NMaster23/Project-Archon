@@ -67,6 +67,47 @@ function SideBar({ activeIndex, setActiveIndex }: { activeIndex: number | null, 
   )
 }
 
+function HandleSessionTokenUpload() {
+  const addAccount = useAuthStore((state) => state.addAccount);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+  }
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "calc(50% + 190px)",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        pointerEvents: "auto",
+        width: "250px",
+        height: "90px",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center"
+      }}
+    > 
+      <input
+        type="file"
+        accept=".token,*"
+        ref={fileInputRef}
+        style={{ display: "none" }}
+        onChange={handleFileUpload}
+      />
+      <MotionButton
+        size="md"
+        variant="outline"
+        className="px-8 font-medium text-zinc-300 border-zinc-600 hover:bg-zinc-800"
+        onClick={() =>
+        }
+      >
+        Upload Session Token
+      </MotionButton>
+    </div>
+  )
+}
+
 export default function App() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const token = useAuthStore((state) => state.getActiveToken());
@@ -173,14 +214,13 @@ export default function App() {
     setWebsocket(socket);
 
     socket.onopen = () => {
-      console.log("✅ Connected to TalosBus");
-      socket.send("Hello from the frontend!");
+      console.log("Connected to TalosBus");
     };
 
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log("📥 TalosBus Data Received:", data);
+        console.log("TalosBus Data Received:", data);
 
         if (data.BusEvent) {
           const busData = data.BusEvent;
@@ -215,16 +255,16 @@ export default function App() {
         }
       } catch (e) {
         setChatHistory((prev) => [...prev, event.data]);
-        console.log("📥 TalosBus Data (Text):", event.data);
+        console.log("TalosBus Data (Text):", event.data);
       }
     };
 
     socket.onerror = (error) => {
-      console.error("❌ TalosBus WebSocket Error:", error);
+      console.error("TalosBus WebSocket Error:", error);
     };
 
     socket.onclose = () => {
-      console.log("🔌 Disconnected from TalosBus");
+      console.log("Disconnected from TalosBus");
     };
 
     return () => {
@@ -246,7 +286,7 @@ export default function App() {
       case 1:
         return <Page2 />;
       case 2:
-        return <Page3 chatHistory={chatHistory} />;
+        return <Page3 chatHistory={chatHistory} websocket={websocket} />;
       case 3:
         return <Page4 websocket={websocket} />;
       case 11:
@@ -342,6 +382,7 @@ export default function App() {
                 Sign In
               </MotionButton>
             </div>
+            <HandleSessionTokenUpload />
           </div>
           </>
         );

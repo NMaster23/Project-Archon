@@ -22,11 +22,12 @@ use tokio::process::Command;
 use tokio::io::AsyncBufReadExt;
 use tokio::time;
 use tower_http::classify::GrpcFailureClass::Status;
-use talos_core::{ClientConfig, ServerConfig, UserPreferences};
+use talos_core::{ClientConfig, ServerConfig, SystemEvent, TalosBus, UserPreferences};
 use talos_core::ConfigFile;
 use turso::Builder;
 use talos_auth::verify_session_token;
 use std::time::{SystemTime, UNIX_EPOCH};
+use serde::Deserialize;
 
 const ICON_ENABLED_BYTES: &[u8] = include_bytes!("../../../assets/Icon.png");
 const ICON_DISABLED_BYTES: &[u8] = include_bytes!("../../../assets/Icon_Disabled.png");
@@ -41,6 +42,16 @@ pub struct ServerStatus {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct PermissionPayload {
     pub access_level: i32,
+}
+
+#[derive(Deserialize)]
+pub struct MessagePayload {
+    message: String,
+}
+
+#[derive(Clone)]
+pub struct WebTXState {
+    tx: mpsc::Sender<Message>,
 }
 
 #[derive(RustEmbed)]
@@ -428,6 +439,17 @@ pub async fn install_plugin(mut multipart: Multipart) -> Result<Json<Value>, (St
     ))
 }
 
+pub async fn send_backend_message(State(state): State<AppState>, Json(payload): Json<MessagePayload>) -> Response {
+    let mut bus_rx = state.bus_tx.subscribe();
+    if let Err(e) = state.bus_tx.send(SystemEvent::BusEvent(
+        TalosBus::VoiceTranscript(payload.message)
+    )) {
+        StatusCode::INTERNAL_SERVER_ERROR.into_response()
+    } else {
+        StatusCode::OK.into_response()
+    }
+}
+
 pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core::SystemEvent>, config: Arc<std::sync::RwLock<ServerConfig>>) {
     let app_root = get_app_root(AppDataType::UserConfig, &APP_INFO).expect("Failed to get user config");
     let plugin_dir = app_root.join("Plugins");
@@ -435,6 +457,7 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
     let plugin_db = plugin_dir.join("plugins.db");
     let db = Builder::new_local(plugin_db.to_str().expect("Failed to convert db path to str")).build().await.expect("Failed to create/access plugin database");
     let conn = db.connect().expect("Failed to connect to database");
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plugins (
         plugin_id TEXT,
@@ -460,6 +483,7 @@ pub async fn server_dashboard(bus_tx: tokio::sync::broadcast::Sender<talos_core:
         .route("/api/plugins/{plugin_id}/permissions", post(update_plugin_permissions))
         .route("/api/plugins/{plugin_id}/config", get(get_plugin_config).post(update_plugin_config))
         .route("/api/plugins/install", post(install_plugin))
+        .route("/api/message", post(send_backend_message))
         .route_layer(axum::middleware::from_fn(talos_auth::axum_auth))
         .with_state(state.clone());
     let public_router = Router::new()

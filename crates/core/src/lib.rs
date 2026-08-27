@@ -60,7 +60,7 @@ pub const CONFIG_TEMPLATE: &str = r#"{
   "_comment": "=== TALOS MASTER CONFIGURATION ===",
 
   "backend": "AGY",
-  "dashboard_port": 3000,
+  "dashboard_port": 3030,
   "server_port": 8080,
   "run_in_background": false,
   "start_on_boot": false,
