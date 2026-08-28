@@ -224,7 +224,8 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     let token = match std::fs::read_to_string(&token_path) {
         Ok(token) => token.trim().to_string(),
         Err(_) => {
-            let new_token = issue_session_token("user@local.client").await.expect("Failed to issue token");
+            let local_email = format!("{}@local.client", whoami::hostname()?.to_string());
+            let new_token = issue_session_token(&local_email).await.expect("Failed to issue token");
             if let Some(parent) = token_path.parent() {
                 std::fs::create_dir_all(parent).expect("Failed to create config dir");
             }

@@ -72,6 +72,31 @@ function HandleSessionTokenUpload() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const raw = await file.text();
+      const token = raw.trim();
+      let email = "user@local.client";
+      try {
+        const payloadUrl = token.split('.')[0];
+        const payload = payloadUrl.replace(/-/g, '+').replace(/_/g, '/');
+        email = decodeURIComponent(escape(atob(payload)));
+      } catch (e) {
+        console.warn("Could not decode email from token using fallback.");
+      }
+      addAccount({
+        username: "Desktop Session",
+        email: email,
+        secret: "",
+        sessionToken: token.trim(),
+      });
+      alertTrigger.success("Success", "Session token applied.")
+    } catch (e) {
+      alertTrigger.danger("Error", "Failed to read session token.")
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   }
   return (
     <div
@@ -100,6 +125,7 @@ function HandleSessionTokenUpload() {
         variant="outline"
         className="px-8 font-medium text-zinc-300 border-zinc-600 hover:bg-zinc-800"
         onClick={() =>
+          fileInputRef.current?.click()
         }
       >
         Upload Session Token
