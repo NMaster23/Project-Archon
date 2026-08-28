@@ -102,7 +102,7 @@ function HandleSessionTokenUpload() {
     <div
       style={{
         position: "absolute",
-        top: "calc(50% + 190px)",
+        top: "calc(50% + 260px)",
         left: "50%",
         transform: "translate(-50%, -50%)",
         pointerEvents: "auto",

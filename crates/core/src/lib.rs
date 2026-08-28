@@ -102,7 +102,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            dashboard_port: 3000,
+            dashboard_port: 3030,
             server_port: 9090,
             cloudflare_token: None,
             run_in_background: false,
