@@ -12,6 +12,13 @@ All of the react side used AI Guidance. I do not know why but the Antigravity-CL
 ## Install
 To install this app you go to the [Releases Page](https://github.com/NMaster23/Project-Archon/releases) and download the installer. Do __not__ download the release marked as Non-User as that is what the installer fetches. If you are an advanced user you can download the application itself and deal with any issues caused by directory. Then you run the app with arguments detailing in the directory the app has been installed to.
 
+#### Windows Directory:
+```
+C:\Users\<user>\AppData\Local\Talos
+```
+
+The shortcut also was placed on the Desktop.
+
 ### Arguments:
 #### Server:
 ```
