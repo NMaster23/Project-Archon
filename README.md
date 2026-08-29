@@ -10,7 +10,7 @@ Project Archon uses multiple modularized crates to help organize the codebase. T
 All of the react side used AI Guidance. I do not know why but the Antigravity-CLI counted towards my AI coding hours even when it was open in the background. I think it might have been counting my app as my app opens an antigravity-cli instance. All AI Usage has more detail in the commit messages. I used a lot of premade components most of my work was just wiring everything together to make it work. For me I consider AI guidance as when the AI does researching and returns a list of modules and docs I can use for my code allowing me to spend less untracked time researching.
 
 ## Install
-To install this app you go to the [Releases Page](https://github.com/NMaster23/Project-Archon/releases) and download the installer. Do __not__ download the release marked as Non-User as that is what the installer fetches. If you are an advanced user you can download the application itself and deal with any issues caused by directory. Then you run the app with arguments detailing in the directory the app has been installed to.
+To install this app you go to the [Releases Page](https://github.com/NMaster23/Project-Archon/releases) and download the installer. Do __not__ download the release marked as Non-User as that is what the installer fetches. If you are an advanced user you can download the application itself and deal with any issues caused by directory. Then you run the app with arguments detailing in the directory the app has been installed to. After the url is printed the user might need to wait for a few moments as it takes a bit for cloudflare to spin up.
 
 #### Windows Directory:
 ```
@@ -62,3 +62,10 @@ and:
 ```
 cargo build -p installer
 ```
+
+## Dashboard Screenshot:
+![Dashboard Login](image.png)
+![Dashboard](image-1.png)
+![Plugins](image-2.png)
+![AI Core](image-3.png)
+![Sessions](image-4.png)

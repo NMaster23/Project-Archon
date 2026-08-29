@@ -35,7 +35,7 @@ pub fn setup() {
     archive.extract(dir).expect("Failed to extract zip");
     fs::remove_file(zip_path).expect("Could not remove file");
     let app_executable = match std::env::consts::OS {
-        "windows" => "https://github.com/NMaster23/Project-Archon/releases/download/Advanced-User/talos.exe",
+        "windows" => "https://github.com/NMaster23/Project-Archon/releases/download/Advanced-User/talos-x86_64-windows.exe",
         "linux" => {
             eprintln!("Linux is currently not supported");
             "https://github.com/NMaster23/Project-Archon/releases/"
@@ -64,7 +64,7 @@ pub fn create_shortcut(path: &Path) {
     println!("Creating shortcut...");
     let icon_path = dirs::data_local_dir().expect("Could not get local dir").join("Talos").join("Icon.ico");
     fs::write(&icon_path, include_bytes!("../../../assets/Icon.ico")).unwrap();
-    let lnk = dirs::desktop_dir().expect("Could not get home dir").join("talos.lnk");
+    let lnk = dirs::desktop_dir().expect("Could not get home dir").join("Talos.lnk");
     let mut sl = ShellLink::new(path).expect("Could not create shortcut link");
     sl.set_icon_location(Some(icon_path.to_str().unwrap().to_string()));
     sl.create_lnk(lnk).expect("Could not create shortcut link");

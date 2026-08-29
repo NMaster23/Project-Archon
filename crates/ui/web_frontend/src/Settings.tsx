@@ -196,7 +196,7 @@ export default function SettingsPage() {
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const accounts = useAuthStore((state) => state.accounts);
+  const accounts = useAuthStore((state) => state.accounts) || [];
   const activeEmail = useAuthStore((state) => state.activeEmail);
   const account = accounts.find((acc) => acc.email === activeEmail);
   const username = account?.username || "User";
@@ -320,31 +320,37 @@ export default function SettingsPage() {
           </CloseButton>
         </div>
       </div>
-      <div className="backdrop-blur-md flex-1 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10 rounded-xl">
+      <div className="backdrop-blur-md flex-1 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10 rounded-xl overflow-y-auto">
         <Input
+          className="bg-zinc-800/50 border border-zinc-700 text-white placeholder:text-zinc-400"
           placeholder="Enter your cloudflare token"
           value={serverConfig?.cloudflare_token || ""}
           onChange={(e) => changeHandler("server", "cloudflare_token", e.target.value)}
-        >
-        </Input>
-        <Input 
-          value={serverConfig?.ai_permissions?.join(", ") || ""}
-          onChange={(e) => {
-            const val = e.target.value;
-            const finalArray = val === "" ? [] : val.split(",").map(s => s.trim()).filter(s => s.length > 0);
-            changeHandler("server", "ai_permissions", finalArray);
-          }}
-        >
-          <Label>AI Permissions</Label>
-        </Input>
-        <Input
-          value={serverConfig?.allowed_mcp_servers?.join(", ") || ""}
-          onChange={(e) => {
-            const val = e.target.value;
-            const finalArray = val === "" ? [] : val.split(",").map(s => s.trim()).filter(s => s.length > 0);
-            changeHandler("server", "allowed_mcp_servers", finalArray);
-          }}
         />
+        <div className="flex flex-col gap-1 w-full">
+          <Label>AI Permissions</Label>
+          <Input 
+            className="bg-zinc-800/50 border border-zinc-700 text-white placeholder:text-zinc-400"
+            value={serverConfig?.ai_permissions?.join(", ") || ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              const finalArray = val === "" ? [] : val.split(",").map(s => s.trim()).filter(s => s.length > 0);
+              changeHandler("server", "ai_permissions", finalArray);
+            }}
+          />
+        </div>
+        <div className="flex flex-col gap-1 w-full">
+          <Label>Allowed MCP Servers</Label>
+          <Input
+            className="bg-zinc-800/50 border border-zinc-700 text-white placeholder:text-zinc-400"
+            value={serverConfig?.allowed_mcp_servers?.join(", ") || ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              const finalArray = val === "" ? [] : val.split(",").map(s => s.trim()).filter(s => s.length > 0);
+              changeHandler("server", "allowed_mcp_servers", finalArray);
+            }}
+          />
+        </div>
         <Switch
           className="w-full"
           isSelected={serverConfig?.run_in_background || false}
@@ -380,7 +386,8 @@ export default function SettingsPage() {
             Auto Start Plugins with System
           </Switch.Content>
         </Switch>
-        <NumberField 
+        <NumberField
+          formatOptions={{ useGrouping: false }}
           value={serverConfig?.server_port || 9090}
           onChange={(value) => changeHandler("server", "server_port", value)}
         >
@@ -391,7 +398,8 @@ export default function SettingsPage() {
             <NumberField.IncrementButton />
           </NumberField.Group>
         </NumberField>
-        <NumberField 
+        <NumberField
+          formatOptions={{ useGrouping: false }}
           value={serverConfig?.dashboard_port || 3030}
           onChange={(value) => changeHandler("server", "dashboard_port", value)}
         >

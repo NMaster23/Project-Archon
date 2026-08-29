@@ -55,7 +55,7 @@ export function GlobalAlert() {
         clear
     } = useAlertStore();
     return (
-        <div className="fixed top-6 right-6 z-50 w-full max-w-md px-4 pointer-events-auto">
+        <div className="fixed top-6 right-6 z-50 w-full max-w-md px-4 pointer-events-auto text-white">
             <AnimatePresence>
                 {current && (
                 <motion.div
