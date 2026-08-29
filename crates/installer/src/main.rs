@@ -23,6 +23,7 @@ fn main() {
 }
 
 pub fn setup() {
+    println!("Setting up...");
     let dir = dirs::data_local_dir().expect("Could not get local data directory").join("Talos").join("Models");
     fs::create_dir_all(&dir).expect("Could not create Models directory");
     let mut files_zip = reqwest::blocking::get("https://github.com/NMaster23/Project-Archon/releases/download/Non-User/models.zip").expect("Could not download models");
@@ -48,16 +49,19 @@ pub fn setup() {
             "https://github.com/NMaster23/Project-Archon/releases/"
         }
     };
+    println!("Downloading {}...", app_executable);
     let mut app = reqwest::blocking::get(app_executable).expect("Could not download models");
     let app_path = dirs::data_local_dir().expect("Could not get local dir").join("Talos");
     let exe_path = app_path.join(if std::env::consts::OS == "windows" { "talos.exe" } else { "talos" });
     let mut app_file = File::create(&exe_path).expect("Could not create file");
     std::io::copy(&mut app, &mut app_file).expect("Could not copy file");
     create_shortcut(&exe_path);
+    println!("Successfully installed!");
 }
 
 #[cfg(target_os = "windows")]
 pub fn create_shortcut(path: &Path) {
+    println!("Creating shortcut...");
     let icon_path = dirs::data_local_dir().expect("Could not get local dir").join("Talos").join("Icon.ico");
     fs::write(&icon_path, include_bytes!("../../../assets/Icon.ico")).unwrap();
     let lnk = dirs::desktop_dir().expect("Could not get home dir").join("talos.lnk");
@@ -68,6 +72,7 @@ pub fn create_shortcut(path: &Path) {
 
 #[cfg(target_os = "linux")]
 pub fn create_shortcut(path: &Path) {
+    println!("Creating shortcut...");
     let icon_path = dirs::data_local_dir().expect("Could not get local dir").join("Talos").join("Icon.png");
     std::fs::write(&icon_path, include_bytes!("../../../assets/Icon.png")).unwrap();
     let finalized_desktop = LINUX_DESKTOP
@@ -83,6 +88,7 @@ pub fn create_shortcut(path: &Path) {
 
 #[cfg(target_os = "macos")]
 pub fn create_shortcut(path: &Path) {
+    println!("Creating shortcut...");
     let desktop_link = dirs::desktop_dir().expect("Could not get desktop dir").join("Talos");
     std::os::unix::fs::symlink(&path, &desktop_link).expect("Could not create shortcut link");
     if let Some(app) = path.to_str() {
@@ -91,6 +97,7 @@ pub fn create_shortcut(path: &Path) {
 }
 
 pub fn mcp_setup() {
+    println!("Setting up MCP server...");
     let home = match std::env::home_dir() {
         Some(h) => h,
         None => return,
