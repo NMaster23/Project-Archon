@@ -1,20 +1,30 @@
 import { CloseButton, TextArea } from "@heroui/react";
 import { PaperPlane } from '@gravity-ui/icons';
 import { useState } from "react";
+import { apiFetch } from "./api";
 
 interface Page3Props {
   chatHistory: string[];
-  websocket: WebSocket | null;
 }
 
-export default function Page3({ chatHistory, websocket}: Page3Props) {
+export default function Page3({ chatHistory }: Page3Props) {
   const [message, setMessage] = useState("");
-  const send = () => {
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-      websocket.send(message);
-      setMessage("")
+  const sendMessage = async () => {
+    try {
+      const response = await apiFetch('/api/message', {
+        method: 'POST',
+        body: JSON.stringify({ message: message })
+      });
+      if (response.ok) {
+        console.log("Message sent to backend");
+        setMessage("");
+      } else {
+        console.log("Error sending message to backend: ", response.status);
+      }
+    } catch (error) {
+      console.error("Could not send message to backend: ", error);
     }
-  }
+  };
   return (
     <div className="text-white p-8 h-full flex flex-col w-full mx-auto">
       <h1 className="text-4xl font-bold mb-8 bg-linear-to-r from-[#00f2fe] to-[#4facfe] bg-clip-text text-transparent">Talos AI Core</h1>
@@ -38,8 +48,8 @@ export default function Page3({ chatHistory, websocket}: Page3Props) {
           onChange={(e) => setMessage(e.target.value)}
         />
         <CloseButton
-          className="text-white hover:bg-default-hover hover:text-foreground active:scale-95"
-          onPress={send}
+          className="pointer-events-auto text-white hover:bg-default-hover hover:text-foreground active:scale-95"
+          onPress={sendMessage}
         >
           <PaperPlane />
         </CloseButton>

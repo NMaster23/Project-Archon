@@ -312,7 +312,7 @@ export default function App() {
       case 1:
         return <Page2 />;
       case 2:
-        return <Page3 chatHistory={chatHistory} websocket={websocket} />;
+        return <Page3 chatHistory={chatHistory} />;
       case 3:
         return <Page4 websocket={websocket} />;
       case 11:
@@ -468,7 +468,7 @@ export default function App() {
           </MeteorShower>
         )}
       </div>
-      <div className="absolute inset-0 z-10 pointer-events-auto flex items-center justify-center">
+      <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
         <motion.div animate={{ paddingLeft: isSidebarVisible ? "320px" : "0px" }} transition={{
           type: "spring",
           stiffness: 300,

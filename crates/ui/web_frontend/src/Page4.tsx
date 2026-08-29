@@ -20,7 +20,7 @@ interface Presence {
 export default function Page4({ websocket }: { websocket: WebSocket | null }) {
   const clients = clientPresenceDetection(websocket);
   return (
-    <div style={{ color: 'white', padding: '2rem' }}>
+    <div style={{ color: 'white', padding: '2rem', pointerEvents: 'auto' }}>
       <h1>Currently Connected Clients</h1>
       <ul>
         {clients.map((client) => (

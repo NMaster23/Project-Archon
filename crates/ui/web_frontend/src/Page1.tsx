@@ -23,7 +23,7 @@ export default function DashBoard({ clientHistory, serverHistory, toolHistory }:
   );
 
   return (
-    <div className="text-white p-8 h-full flex flex-col max-w-360 mx-auto">
+    <div className="pointer-events-auto text-white p-8 h-full flex flex-col max-w-360 mx-auto">
       <h1 className="text-4xl font-bold mb-8 bg-linear-to-r from-[#A855F7] to-[#6366F1] bg-clip-text text-transparent">Talos Dashboard</h1>
       
       <div className="flex-1 flex flex-row gap-6 h-full overflow-hidden">

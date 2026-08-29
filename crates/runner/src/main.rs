@@ -2,14 +2,12 @@ use app_dirs2::{AppDataType, AppInfo, get_app_root};
 use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
 use talos_ai::{gemini_api, manage_soul, save_chats, self_improvement};
-use talos_auth::{auth, get_auth, issue_session_token, verify_session_token};
+use talos_auth::{get_auth, issue_session_token, verify_session_token};
 use talos_core::{ClientToServer, ConfigFile, ServerToClient, TalosBus, UserPreferences};
 use notify_rust::{Notification, Timeout};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use talos_core::TalosBus::UserCredentials;
-use any_tts::{load_model, ModelType, SynthesisRequest, TtsConfig, TtsModel};
-use talos_ui::get_user_preferences;
+use any_tts::{load_model, ModelType, TtsConfig, TtsModel};
 use auto_launch::*;
 
 const APP_INFO: AppInfo = AppInfo {
@@ -221,7 +219,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
     let client_config = Arc::new(RwLock::new(talos_core::ClientConfig::load(&client_config_path, talos_core::CONFIG_TEMPLATE)));
     let (icon_enabled_path, _) = talos_ui::get_icon_paths();
     let token_path = config_path.join("session.token");
-    let token = match std::fs::read_to_string(&token_path) {
+    let _token = match std::fs::read_to_string(&token_path) {
         Ok(token) => token.trim().to_string(),
         Err(_) => {
             let local_email = format!("{}@local.client", whoami::hostname()?.to_string());
@@ -307,7 +305,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
             tokio::select! {
                 Some(msg) = stt_rx.recv() => {
                     if let TalosBus::VoiceTranscript(text) = msg {
-                        if let Err(e) = conn.send_to_server(&ClientToServer::VoiceTranscript(text.clone())).await {
+                        if let Err(_e) = conn.send_to_server(&ClientToServer::VoiceTranscript(text.clone())).await {
                             break;
                         };
                         let _ = ui_tx.send(format!("You: {}", text.trim()));
@@ -326,7 +324,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
                                         Ok(output) => (true, output),
                                         Err(e) => (false, e),
                                     };
-                                    if let Err(e) = conn.send_to_server(&ClientToServer::ToolCallResult {
+                                    if let Err(_e) = conn.send_to_server(&ClientToServer::ToolCallResult {
                                         call_id,
                                         tool_name,
                                         success,
@@ -336,7 +334,7 @@ pub async fn run_client(server_addr: &str) -> anyhow::Result<()> {
                                     };
                                 }
                                 ServerToClient::RequestToolRegistration => {
-                                    if let Err(e) = conn.send_to_server(&ClientToServer::ToolRegistration { tools: talos_executor::get_tools().await }).await {
+                                    if let Err(_e) = conn.send_to_server(&ClientToServer::ToolRegistration { tools: talos_executor::get_tools().await }).await {
                                         break;
                                     };
                                 }

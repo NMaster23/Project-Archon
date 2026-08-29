@@ -47,7 +47,7 @@ export default function Page2() {
     }
   }
   return (
-    <div className="flex-1 flex flex-col items-start gap-4 shadow-2xl h-full overflow-hidden p-6 pointer-events-auto">
+    <div className="relative flex-1 flex flex-col items-end gap-4 shadow-2xl h-full overflow-hidden p-6 pointer-events-auto">
       <div className="absolute top-4 left-18 z-50">
         <CloseButton
           className="w-12 h-12 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex items-center justify-center"

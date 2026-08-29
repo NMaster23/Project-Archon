@@ -23,12 +23,7 @@ fn main() {
 }
 
 pub fn setup() {
-    let mut dir = match dirs::data_local_dir() {
-        Ok(dir) => dir,
-        Err(e) => {
-            eprintln!("Error getting local directory: {}", e);
-        }
-    }.join("Talos").join("Models");
+    let dir = dirs::data_local_dir().expect("Could not get local data directory").join("Talos").join("Models");
     fs::create_dir_all(&dir).expect("Could not create Models directory");
     let mut files_zip = reqwest::blocking::get("https://github.com/NMaster23/Project-Archon/releases/download/Non-User/models.zip").expect("Could not download models");
     let zip_path = &dir.join("Non-User.zip");
@@ -39,9 +34,15 @@ pub fn setup() {
     archive.extract(dir).expect("Failed to extract zip");
     fs::remove_file(zip_path).expect("Could not remove file");
     let app_executable = match std::env::consts::OS {
-        "windows" => "https://github.com/NMaster23/Project-Archon/releases/download/windows.exe",
-        "linux" => "https://github.com/NMaster23/Project-Archon/releases/download/linux64",
-        "macos" => "https://github.com/NMaster23/Project-Archon/releases/download/macos",
+        "windows" => "https://github.com/NMaster23/Project-Archon/releases/download/Advanced-User/talos.exe",
+        "linux" => {
+            eprintln!("Linux is currently not supported");
+            "https://github.com/NMaster23/Project-Archon/releases/"
+        },
+        "macos" => {
+            eprintln!("MacOS is currently not supported");
+            "https://github.com/NMaster23/Project-Archon/releases/"
+        },
         _ => {
             eprintln!("Unknown/Unsupported Operating system");
             "https://github.com/NMaster23/Project-Archon/releases/"
@@ -58,7 +59,7 @@ pub fn setup() {
 #[cfg(target_os = "windows")]
 pub fn create_shortcut(path: &Path) {
     let icon_path = dirs::data_local_dir().expect("Could not get local dir").join("Talos").join("Icon.ico");
-    std::fs::write(&icon_path, include_bytes!("../../../assets/Icon.ico")).unwrap();
+    fs::write(&icon_path, include_bytes!("../../../assets/Icon.ico")).unwrap();
     let lnk = dirs::desktop_dir().expect("Could not get home dir").join("talos.lnk");
     let mut sl = ShellLink::new(path).expect("Could not create shortcut link");
     sl.set_icon_location(Some(icon_path.to_str().unwrap().to_string()));

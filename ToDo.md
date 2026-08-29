@@ -103,7 +103,7 @@
 
 ## ⏳ Deferred
 
-- [ ] **Installer download URLs** — will update when binaries are published
+- [x] **Installer download URLs** — will update when binaries are published
 - [ ] **README.md** — write project description, build instructions, screenshots
 - [ ] **LICENSE** — add MIT or Apache-2.0
 - [ ] **Build/setup docs** — explain dependencies (ONNX models, Turso, WASM plugins, etc.)
