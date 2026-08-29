@@ -6,6 +6,7 @@ import {
   ColorPicker,
   ColorSlider,
   ColorSwatch,
+  Input,
   Label,
   NumberField,
 } from "@heroui/react";
@@ -320,6 +321,30 @@ export default function SettingsPage() {
         </div>
       </div>
       <div className="backdrop-blur-md flex-1 items-start justify-center h-full flex flex-col p-6 gap-4 bg-blue-300/5 border border-white/10 rounded-xl">
+        <Input
+          placeholder="Enter your cloudflare token"
+          value={serverConfig?.cloudflare_token || ""}
+          onChange={(e) => changeHandler("server", "cloudflare_token", e.target.value)}
+        >
+        </Input>
+        <Input 
+          value={serverConfig?.ai_permissions?.join(", ") || ""}
+          onChange={(e) => {
+            const val = e.target.value;
+            const finalArray = val === "" ? [] : val.split(",").map(s => s.trim()).filter(s => s.length > 0);
+            changeHandler("server", "ai_permissions", finalArray);
+          }}
+        >
+          <Label>AI Permissions</Label>
+        </Input>
+        <Input
+          value={serverConfig?.allowed_mcp_servers?.join(", ") || ""}
+          onChange={(e) => {
+            const val = e.target.value;
+            const finalArray = val === "" ? [] : val.split(",").map(s => s.trim()).filter(s => s.length > 0);
+            changeHandler("server", "allowed_mcp_servers", finalArray);
+          }}
+        />
         <Switch
           className="w-full"
           isSelected={serverConfig?.run_in_background || false}
@@ -355,7 +380,10 @@ export default function SettingsPage() {
             Auto Start Plugins with System
           </Switch.Content>
         </Switch>
-        <NumberField defaultValue={serverConfig?.server_port || 9090}>
+        <NumberField 
+          value={serverConfig?.server_port || 9090}
+          onChange={(value) => changeHandler("server", "server_port", value)}
+        >
           <Label>Server Port</Label>
           <NumberField.Group>
             <NumberField.DecrementButton />
@@ -363,7 +391,10 @@ export default function SettingsPage() {
             <NumberField.IncrementButton />
           </NumberField.Group>
         </NumberField>
-        <NumberField defaultValue={serverConfig?.dashboard_port || 3030}>
+        <NumberField 
+          value={serverConfig?.dashboard_port || 3030}
+          onChange={(value) => changeHandler("server", "dashboard_port", value)}
+        >
           <Label>Dashboard Port</Label>
           <NumberField.Group>
             <NumberField.DecrementButton />
@@ -389,8 +420,11 @@ export default function SettingsPage() {
             className="flex-1 min-h-0 mr-8 mb-4 w-full h-full"
           >
             <ConfigEditor
-            config={serverConfig}
-              onChange={(newConfig) => changeHandler("server", "run_in_background", newConfig)}
+              config={serverConfig}
+              onChange={(newConfig) => {
+                // Assuming ConfigEditor returns a complete serverConfig object
+                if (newConfig) setServerConfig(newConfig);
+              }}
             />
           </motion.div>
       )}
